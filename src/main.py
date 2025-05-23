@@ -1,7 +1,12 @@
 from fastapi import FastAPI
-from business_logic.alpha_calculator import AlphaCalculator
+from src.routes import router as api_router
 
-    
-if __name__ == "__main__":
+app = FastAPI()
 
-    
+# Include the API router
+app.include_router(api_router)
+
+# Register custom exception handlers
+#configure_exception_handlers(app)
+
+

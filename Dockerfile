@@ -3,10 +3,20 @@ FROM python:3.10.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-COPY /src /app/
-ENV PYTHONPATH=/app/
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir uvicorn
 
-CMD ["uvicorn", "main:app", "--port", "8000", "--host", "0.0.0.0", "--reload"]
+# Copy the source code
+COPY src/ /app/src/
+
+# Set PYTHONPATH
+ENV PYTHONPATH=/app
+
+# Expose the port the app runs on
+EXPOSE 8001
+
+# Fix the path to the main module
+CMD ["uvicorn", "src.main:app", "--port", "8001", "--host", "0.0.0.0", "--reload"]
