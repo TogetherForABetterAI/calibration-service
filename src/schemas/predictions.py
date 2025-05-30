@@ -1,5 +1,9 @@
 from pydantic import BaseModel
-from typing import List, Tuple, Union
+from typing import List
 
 class Predictions(BaseModel):
-    data_prob_pairs: List[Tuple[str, float]]
+    label: int
+    probabilities: List[float]
+    alpha: float
+
+    
