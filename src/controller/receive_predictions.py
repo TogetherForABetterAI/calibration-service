@@ -1,19 +1,25 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 from src.schemas.predictions import Predictions
 from src.service.service import calculate_error_rate
 from src.service.mlflow_logger import batch_logger
 
 router = APIRouter()
 
-@router.post("", status_code=200)
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Predictions received and logged successfully"},
+        400: {"description": "Invalid input data"},
+    },
+)
 def receive_predictions(predictions: Predictions):
     print(f"Received predictions: {predictions}")
-    new_alpha = calculate_error_rate(predictions.alpha, predictions.probabilities, predictions.label)
-    
+    # new_alpha = calculate_error_rate(predictions.alpha, predictions.probabilities, predictions.label)
+
     batch_logger.log_batch(predictions.probabilities)
 
     if predictions.eof:  # <- chequeo de finalización
-        path = batch_logger.finalize()
-        return {"message": "Finished logging", "alpha": new_alpha, "file": path}
+        batch_logger.finalize()
 
-    return {"alpha": new_alpha}

@@ -3,6 +3,7 @@ import numpy as np
 import mlflow
 from pathlib import Path
 
+
 class BatchLogger:
     def __init__(self):
         self.reset()
@@ -25,7 +26,7 @@ class BatchLogger:
     def finalize(self):
         if self.run:
             Path("artifacts").mkdir(exist_ok=True)
-            
+
             # Eliminar predicciones vacías (e.g. [] del eof)
             filtered_batches = [b for b in self.batches if b]
             all_probs = np.array(filtered_batches)
@@ -36,7 +37,14 @@ class BatchLogger:
             mlflow.log_artifact(str(output_path))
             mlflow.log_param("source", "batchwise_probs")
             mlflow.log_metric("num_batches", len(filtered_batches))
-            mlflow.log_metric("total_samples", len(filtered_batches) * len(filtered_batches[0]) if filtered_batches else 0)
+            mlflow.log_metric(
+                "total_samples",
+                (
+                    len(filtered_batches) * len(filtered_batches[0])
+                    if filtered_batches
+                    else 0
+                ),
+            )
 
             mlflow.end_run()
             print(f"[MLflow] Finished run {self.run_id}")
