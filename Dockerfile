@@ -10,13 +10,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir uvicorn
 
 # Copy the source code
-COPY src/ /app/src/
+COPY src/ /app/
 
 # Set PYTHONPATH
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/
 
 # Expose the port the app runs on
 EXPOSE 8001
 
 # Fix the path to the main module
-CMD ["uvicorn", "src.main:app", "--port", "8001", "--host", "0.0.0.0", "--reload"]
+CMD ["uvicorn", "main:app", "--port", "8001", "--host", "0.0.0.0", "--reload"]

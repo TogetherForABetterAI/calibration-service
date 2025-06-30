@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
-from src.schemas.predictions import Predictions
-from src.service.service import calculate_error_rate
-from src.service.mlflow_logger import batch_logger
+from schemas.predictions import Predictions
+from service.service import calculate_error_rate
+from service.mlflow_logger import batch_logger
 
 router = APIRouter()
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.controller.receive_predictions import router as receive_predictions_router
+from controller.receive_predictions import router as receive_predictions_router
 
 
 router = APIRouter()
