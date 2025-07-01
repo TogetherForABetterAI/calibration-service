@@ -5,6 +5,8 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     ports:
       - "8001:8001"
+    volumes:
+      - ./artifacts:/app/artifacts
     networks:
       - mlflow-network
 

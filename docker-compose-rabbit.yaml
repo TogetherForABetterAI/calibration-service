@@ -1,0 +1,18 @@
+services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: "rabbitmq:4.0-management"
+    ports:
+      - "${RABBITMQ_UI_PORT}:${RABBITMQ_UI_PORT}"
+      - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+    networks:
+      - testing_net
+    volumes:
+      - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24

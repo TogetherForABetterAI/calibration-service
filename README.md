@@ -6,26 +6,16 @@ This repository contains the server-side component for the TPP application.
 
 Follow these steps to build and run the server-side container:
 
-### Building the Docker Image
+### Run Calibration Service
 
 ```bash
-# Build the Docker image with a tag
-sudo docker build -t calibration-service .
+make docker compose up
 ```
 
-### Running the Container
+### Stop and remove Calibration Service container
 
 ```bash
-# Run the container, exposing port 8001
-sudo docker run -p 8001:8001 calibration-service
-```
-
-### Stopping All Running Containers
-
-To stop all running Docker containers at once:
-
-```bash
-sudo docker stop $(sudo docker ps -q)
+make docker compose down
 ```
 
 ### Accessing the API
