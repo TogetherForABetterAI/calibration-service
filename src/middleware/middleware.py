@@ -4,7 +4,7 @@ import logging
 
 class Middleware:
     def __init__(self):
-        connection = pika.BlockingConnection(pika.ConnectionParameters(os.getenv("RABBITMQ_HOST", "rabbitmq")))
+        connection = pika.BlockingConnection(pika.ConnectionParameters("rabbitmq"))
         channel = connection.channel()
         channel.confirm_delivery()
         channel.basic_qos(prefetch_count=1)

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package calibration;
+
+message Predictions {
+  int32 label = 1;
+  repeated float probabilities = 2;
+  bool eof = 3;
+}
+

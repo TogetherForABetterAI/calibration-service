@@ -3,16 +3,13 @@ services:
     container_name: rabbitmq
     image: "rabbitmq:4.0-management"
     ports:
-      - "${RABBITMQ_UI_PORT}:${RABBITMQ_UI_PORT}"
-      - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+      - "15672:15672"
+      - "5672:5672"
     networks:
-      - testing_net
+      - mlflow-network
     volumes:
       - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
 
 networks:
-  testing_net:
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.25.125.0/24
+  mlflow-network:
+    external: true
