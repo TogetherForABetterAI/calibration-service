@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package dataset;
+
+// Response containing a batch of data
+message DataBatch {
+  bytes data = 1;           // serialized tensor data
+  int32 batch_index = 2;       
+  bool is_last_batch = 3;   // indicates if this is the last batch
+}

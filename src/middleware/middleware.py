@@ -21,13 +21,13 @@ class Middleware:
 
     def callback_wrapper(self, callback_function):
         def wrapper(ch, method, properties, body):
-            try:
-                callback_function(ch, method, properties, body)
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-            except Exception as e:
-                logging.error(
-                    f"action: rabbitmq_callback | result: fail | error: {e}")
-                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            # try:
+            callback_function(ch, method, properties, body)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            # except Exception as e:
+            #     logging.error(
+            #         f"action: rabbitmq_callback | result: fail | error: {e}")
+            #     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
                 
         return wrapper
         

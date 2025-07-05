@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y unzip wget \
   && rm protoc-31.1-linux-x86_64.zip
 
 RUN protoc --proto_path=/app/proto --python_out=/app/proto /app/proto/calibration.proto
+RUN protoc --proto_path=/app/proto --python_out=/app/proto /app/proto/dataset.proto
 
 # Fix the path to the main module
 CMD ["uvicorn", "main:app", "--port", "8001", "--host", "0.0.0.0", "--reload"]

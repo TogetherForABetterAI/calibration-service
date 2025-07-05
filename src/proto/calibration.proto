@@ -2,9 +2,14 @@ syntax = "proto3";
 
 package calibration;
 
+message PredictionList {
+  repeated float values = 1;
+  int32 label = 2;
+}
+
 message Predictions {
-  int32 label = 1;
-  repeated float probabilities = 2;
-  bool eof = 3;
+  repeated PredictionList pred = 1;
+  bool eof = 2;
+  int32 batch_index = 3;
 }
 

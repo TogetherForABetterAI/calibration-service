@@ -12,7 +12,7 @@ class Router():
         self._middleware.start()
         
     def outputs_callback(self, ch, method, properties, body):
-        self._controller.process_outputs(body)
+        self._controller.process_outputs(ch, method, properties, body)
         
     def inputs_callback(self, ch, method, properties, body):
-        self._controller.process_inputs(body)
+        self._controller.process_inputs(ch, method, properties, body)
