@@ -1,0 +1,15 @@
+services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: "rabbitmq:4.0-management"
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    networks:
+      - mlflow-network
+    volumes:
+      - /etc/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+
+networks:
+  mlflow-network:
+    external: true

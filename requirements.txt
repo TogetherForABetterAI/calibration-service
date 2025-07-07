@@ -1,4 +1,7 @@
-fastapi
-pydantic
-sqlalchemy
+uvicorn
 mlflow
+pika
+protobuf
+numpy
+boto3
+pandas
