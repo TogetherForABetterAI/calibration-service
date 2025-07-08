@@ -1,14 +1,12 @@
-from fastapi import FastAPI
-from src.routes import router as api_router
-import mlflow
+from router import Router
+from lib.connection import setup_rabbitmq
+import logging
 
-app = FastAPI()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-# Include the API router
-app.include_router(api_router)
-
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_experiment("Calibration Experiment for MNIST")
-
-# Register custom exception handlers
-#configure_exception_handlers(app)
+middleware = setup_rabbitmq()
+router = Router(middleware)
+router.start()
