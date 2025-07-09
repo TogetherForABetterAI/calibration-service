@@ -11,16 +11,13 @@ class ClientManager:
         self._client_threads: Dict[str, threading.Thread] = {}
         self._lock = threading.Lock()
 
-    def register_client(
-        self, client_id: str, inter_queue_name: str, client_queue_name: str
-    ) -> bool:
+    def register_client(self, client_id: str, routing_key: str) -> bool:
         """
         Register a new client and start its processing thread.
 
         Args:
             client_id: Unique identifier for the client
-            inter_queue_name: Queue name for data from data-dispatcher-service
-            client_queue_name: Queue name for probabilities from SDK
+            routing_key: Routing key for both dataset and calibration exchanges
 
         Returns:
             bool: True if client was successfully registered, False otherwise
@@ -37,8 +34,7 @@ class ClientManager:
                 # Create client processor
                 client_processor = ClientProcessor(
                     client_id=client_id,
-                    inter_queue_name=inter_queue_name,
-                    client_queue_name=client_queue_name,
+                    routing_key=routing_key,
                     middleware=middleware,
                 )
 
@@ -54,7 +50,7 @@ class ClientManager:
                 thread.start()
 
                 logging.info(
-                    f"Successfully registered client {client_id} with queues: {inter_queue_name}, {client_queue_name}"
+                    f"Successfully registered client {client_id} with routing_key: {routing_key}"
                 )
                 return True
 
