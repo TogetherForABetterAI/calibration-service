@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import new_client_service_pb2 as new__client__service__pb2
+from . import new_client_service_pb2 as new__client__service__pb2
 
 GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
