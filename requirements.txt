@@ -5,3 +5,5 @@ protobuf
 numpy
 boto3
 pandas
+grpcio
+grpcio-tools
