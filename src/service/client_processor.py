@@ -8,18 +8,19 @@ from proto import calibration_pb2, dataset_pb2
 from service.mlflow_logger import MlflowLogger
 from middleware.middleware import Middleware
 
+DATASET_EXCHANGE = "dataset-exchange"
+CALIBRATION_EXCHANGE = "calibration-exchange"
+
 
 class ClientProcessor:
     def __init__(
         self,
         client_id: str,
-        inter_queue_name: str,
-        client_queue_name: str,
+        routing_key: str,
         middleware: Middleware,
     ):
         self.client_id = client_id
-        self.inter_queue_name = inter_queue_name
-        self.client_queue_name = client_queue_name
+        self.routing_key = routing_key
         self.middleware = middleware
 
         # Threading control
@@ -36,7 +37,7 @@ class ClientProcessor:
         logging.info(f"Initialized ClientProcessor for client {client_id}")
 
     def start_processing(self):
-        """Start processing messages from both queues."""
+        """Start processing messages from both exchanges using the routing key."""
         with self._lock:
             if self._running:
                 logging.warning(
@@ -48,15 +49,21 @@ class ClientProcessor:
             logging.info(f"Starting processing for client {self.client_id}")
 
         try:
-            # Set up consumers for both queues
-            self.middleware.basic_consume(
-                queue_name=self.inter_queue_name,
-                callback_function=self._handle_data_message,
+            # Set up consumers for both exchanges using the routing key
+            self.middleware._channel.queue_bind(
+                queue=self.routing_key,
+                exchange=DATASET_EXCHANGE,
+                routing_key=self.routing_key,
+            )
+            self.middleware._channel.queue_bind(
+                queue=self.routing_key,
+                exchange=CALIBRATION_EXCHANGE,
+                routing_key=self.routing_key,
             )
 
             self.middleware.basic_consume(
-                queue_name=self.client_queue_name,
-                callback_function=self._handle_probability_message,
+                queue_name=self.routing_key,
+                callback_function=self._handle_message,
             )
 
             # Start consuming messages
@@ -90,72 +97,56 @@ class ClientProcessor:
         except Exception as e:
             logging.error(f"Error stopping processing for client {self.client_id}: {e}")
 
-    def _handle_data_message(self, ch, method, properties, body):
-        """Handle data messages from the inter_queue (data-dispatcher-service)."""
+    def _handle_message(self, ch, method, properties, body):
+        """Handle messages from both dataset and calibration exchanges."""
         try:
-            message = dataset_pb2.DataBatch()
-            message.ParseFromString(body)
-
-            logging.debug(
-                f"Client {self.client_id}: Received data batch {message.batch_index}"
-            )
-
-            # Parse the image data
-            image_shape = (1, 28, 28)
-            image_dtype = np.float32
-            image_size = np.prod(image_shape)
-
-            images = np.frombuffer(message.data, dtype=image_dtype)
-            num_floats = images.size
-            num_images = num_floats // image_size
-
-            if num_images * image_size != num_floats:
-                raise ValueError("Incompatible data size for image")
-
-            images = images.reshape((num_images, *image_shape))
-
-            # Store the data and check if we can process this batch
-            self._store_data(message.batch_index, images, message.is_last_batch)
-
-            # Acknowledge the message
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
+            # Try to parse as DataBatch
+            try:
+                message = dataset_pb2.DataBatch()
+                message.ParseFromString(body)
+                self._handle_data_message(ch, method, properties, message)
+                return
+            except Exception:
+                pass
+            # Try to parse as Predictions
+            try:
+                message = calibration_pb2.Predictions()
+                message.ParseFromString(body)
+                self._handle_probability_message(ch, method, properties, message)
+                return
+            except Exception:
+                pass
+            raise ValueError("Unknown message type received on routing key queue")
         except Exception as e:
-            logging.error(
-                f"Error processing data message for client {self.client_id}: {e}"
-            )
-            # Reject the message and requeue
+            logging.error(f"Error processing message for client {self.client_id}: {e}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
-    def _handle_probability_message(self, ch, method, properties, body):
-        """Handle probability messages from the client_queue (SDK)."""
-        try:
-            message = calibration_pb2.Predictions()
-            message.ParseFromString(body)
+    def _handle_data_message(self, ch, method, properties, message):
+        logging.debug(
+            f"Client {self.client_id}: Received data batch {message.batch_index}"
+        )
+        image_shape = (1, 28, 28)
+        image_dtype = np.float32
+        image_size = np.prod(image_shape)
+        images = np.frombuffer(message.data, dtype=image_dtype)
+        num_floats = images.size
+        num_images = num_floats // image_size
+        if num_images * image_size != num_floats:
+            raise ValueError("Incompatible data size for image")
+        images = images.reshape((num_images, *image_shape))
+        self._store_data(message.batch_index, images, message.is_last_batch)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
-            logging.debug(
-                f"Client {self.client_id}: Received probability batch {message.batch_index}"
-            )
-
-            # Parse the probabilities
-            probs = [list(p.values) for p in message.pred]
-            probs_array = np.array(probs, dtype=np.float32)
-
-            # Store the probabilities and check if we can process this batch
-            self._store_probabilities(message.batch_index, probs_array, message.eof)
-
-            # Acknowledge the message
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-        except Exception as e:
-            logging.error(
-                f"Error processing probability message for client {self.client_id}: {e}"
-            )
-            # Reject the message and requeue
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+    def _handle_probability_message(self, ch, method, properties, message):
+        logging.debug(
+            f"Client {self.client_id}: Received probability batch {message.batch_index}"
+        )
+        probs = [list(p.values) for p in message.pred]
+        probs_array = np.array(probs, dtype=np.float32)
+        self._store_probabilities(message.batch_index, probs_array, message.eof)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def _store_data(self, batch_index: int, inputs: np.ndarray, is_last_batch: bool):
-        """Store input data for a batch."""
         with self._batches_lock:
             if batch_index not in self._batches:
                 self._batches[batch_index] = {
@@ -163,19 +154,14 @@ class ClientProcessor:
                     "probs": None,
                     "eof": False,
                 }
-
             self._batches[batch_index]["inputs"] = inputs
-
             if is_last_batch:
                 self._batches[batch_index]["eof"] = True
-
-            # Check if we can process this batch
             self._try_process_batch(batch_index)
 
     def _store_probabilities(
         self, batch_index: int, probs: np.ndarray, is_last_batch: bool
     ):
-        """Store probabilities for a batch."""
         with self._batches_lock:
             if batch_index not in self._batches:
                 self._batches[batch_index] = {
@@ -183,39 +169,27 @@ class ClientProcessor:
                     "probs": None,
                     "eof": False,
                 }
-
             self._batches[batch_index]["probs"] = probs
-
             if is_last_batch:
                 self._batches[batch_index]["eof"] = True
-
-            # Check if we can process this batch
             self._try_process_batch(batch_index)
 
     def _try_process_batch(self, batch_index: int):
-        """Try to process a batch if both inputs and probabilities are available."""
         batch = self._batches[batch_index]
-
         if batch["inputs"] is not None and batch["probs"] is not None:
             try:
-                # Process the batch with MLflow logging
                 self._mlflow_logger.log_single_batch(
                     batch_index=batch_index,
                     probs=batch["probs"],
                     inputs=batch["inputs"],
                 )
-
                 logging.info(f"Client {self.client_id}: Processed batch {batch_index}")
-
-                # Remove the processed batch
                 del self._batches[batch_index]
-
             except Exception as e:
                 logging.error(
                     f"Error processing batch {batch_index} for client {self.client_id}: {e}"
                 )
 
     def is_running(self) -> bool:
-        """Check if the processor is currently running."""
         with self._lock:
             return self._running
