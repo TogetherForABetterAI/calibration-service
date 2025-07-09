@@ -16,13 +16,14 @@ class ClientNotificationServiceServicer(
     def NotifyNewClient(self, request, context):
         try:
             client_id = request.client_id
-            inter_queue_name = request.inter_queue_name
-            client_queue_name = request.client_queue_name
+            routing_key = request.routing_key
 
-            logging.info(f"Received NotifyNewClient request for client {client_id}")
+            logging.info(
+                f"Received NotifyNewClient request for client {client_id} with routing_key {routing_key}"
+            )
 
-            if not client_id or not inter_queue_name or not client_queue_name:
-                error_msg = "Missing required parameters: client_id, inter_queue_name, or client_queue_name"
+            if not client_id or not routing_key:
+                error_msg = "Missing required parameters: client_id or routing_key"
                 logging.error(error_msg)
                 return new_client_service_pb2.NewClientResponse(
                     status="ERROR", message=error_msg
@@ -30,8 +31,7 @@ class ClientNotificationServiceServicer(
 
             success = self.client_manager.register_client(
                 client_id=client_id,
-                inter_queue_name=inter_queue_name,
-                client_queue_name=client_queue_name,
+                routing_key=routing_key,
             )
 
             if success:
