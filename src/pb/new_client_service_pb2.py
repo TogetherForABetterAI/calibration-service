@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18new-client-service.proto\x12\tnewClient\"Z\n\x10NewClientRequest\x12\x11\n\tclient_id\x18\x01 \x01(\t\x12\x18\n\x10inter_queue_name\x18\x02 \x01(\t\x12\x19\n\x11\x63lient_queue_name\x18\x03 \x01(\t\"4\n\x11NewClientResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x14\n\x12HealthCheckRequest\"6\n\x13HealthCheckResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t2\xb7\x01\n\x19\x43lientNotificationService\x12L\n\x0fNotifyNewClient\x12\x1b.newClient.NewClientRequest\x1a\x1c.newClient.NewClientResponse\x12L\n\x0bHealthCheck\x12\x1d.newClient.HealthCheckRequest\x1a\x1e.newClient.HealthCheckResponseB6Z4github.com/mlops-eval/data-dispatcher-service/src/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18new-client-service.proto\x12\tnewClient\":\n\x10NewClientRequest\x12\x11\n\tclient_id\x18\x01 \x01(\t\x12\x13\n\x0brouting_key\x18\x02 \x01(\t\"4\n\x11NewClientResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x14\n\x12HealthCheckRequest\"6\n\x13HealthCheckResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t2\xb7\x01\n\x19\x43lientNotificationService\x12L\n\x0fNotifyNewClient\x12\x1b.newClient.NewClientRequest\x1a\x1c.newClient.NewClientResponse\x12L\n\x0bHealthCheck\x12\x1d.newClient.HealthCheckRequest\x1a\x1e.newClient.HealthCheckResponseB6Z4github.com/mlops-eval/data-dispatcher-service/src/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,13 +33,13 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z4github.com/mlops-eval/data-dispatcher-service/src/pb'
   _globals['_NEWCLIENTREQUEST']._serialized_start=39
-  _globals['_NEWCLIENTREQUEST']._serialized_end=129
-  _globals['_NEWCLIENTRESPONSE']._serialized_start=131
-  _globals['_NEWCLIENTRESPONSE']._serialized_end=183
-  _globals['_HEALTHCHECKREQUEST']._serialized_start=185
-  _globals['_HEALTHCHECKREQUEST']._serialized_end=205
-  _globals['_HEALTHCHECKRESPONSE']._serialized_start=207
-  _globals['_HEALTHCHECKRESPONSE']._serialized_end=261
-  _globals['_CLIENTNOTIFICATIONSERVICE']._serialized_start=264
-  _globals['_CLIENTNOTIFICATIONSERVICE']._serialized_end=447
+  _globals['_NEWCLIENTREQUEST']._serialized_end=97
+  _globals['_NEWCLIENTRESPONSE']._serialized_start=99
+  _globals['_NEWCLIENTRESPONSE']._serialized_end=151
+  _globals['_HEALTHCHECKREQUEST']._serialized_start=153
+  _globals['_HEALTHCHECKREQUEST']._serialized_end=173
+  _globals['_HEALTHCHECKRESPONSE']._serialized_start=175
+  _globals['_HEALTHCHECKRESPONSE']._serialized_end=229
+  _globals['_CLIENTNOTIFICATIONSERVICE']._serialized_start=232
+  _globals['_CLIENTNOTIFICATIONSERVICE']._serialized_end=415
 # @@protoc_insertion_point(module_scope)

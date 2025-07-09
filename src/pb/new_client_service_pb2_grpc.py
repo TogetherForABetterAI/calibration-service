@@ -3,33 +3,31 @@
 import grpc
 import warnings
 
-from . import new_client_service_pb2 as new__client__service__pb2
+import new_client_service_pb2 as new__client__service__pb2
 
-GRPC_GENERATED_VERSION = "1.73.1"
+GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
 try:
     from grpc._utilities import first_version_is_lower
-
-    _version_not_supported = first_version_is_lower(
-        GRPC_VERSION, GRPC_GENERATED_VERSION
-    )
+    _version_not_supported = first_version_is_lower(GRPC_VERSION, GRPC_GENERATED_VERSION)
 except ImportError:
     _version_not_supported = True
 
 if _version_not_supported:
     raise RuntimeError(
-        f"The grpc package installed is at version {GRPC_VERSION},"
-        + f" but the generated code in new_client_service_pb2_grpc.py depends on"
-        + f" grpcio>={GRPC_GENERATED_VERSION}."
-        + f" Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}"
-        + f" or downgrade your generated code using grpcio-tools<={GRPC_VERSION}."
+        f'The grpc package installed is at version {GRPC_VERSION},'
+        + f' but the generated code in new_client_service_pb2_grpc.py depends on'
+        + f' grpcio>={GRPC_GENERATED_VERSION}.'
+        + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
+        + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
 class ClientNotificationServiceStub(object):
-    """Client Notification service definition"""
+    """Client Notification service definition
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -38,78 +36,75 @@ class ClientNotificationServiceStub(object):
             channel: A grpc.Channel.
         """
         self.NotifyNewClient = channel.unary_unary(
-            "/newClient.ClientNotificationService/NotifyNewClient",
-            request_serializer=new__client__service__pb2.NewClientRequest.SerializeToString,
-            response_deserializer=new__client__service__pb2.NewClientResponse.FromString,
-            _registered_method=True,
-        )
+                '/newClient.ClientNotificationService/NotifyNewClient',
+                request_serializer=new__client__service__pb2.NewClientRequest.SerializeToString,
+                response_deserializer=new__client__service__pb2.NewClientResponse.FromString,
+                _registered_method=True)
         self.HealthCheck = channel.unary_unary(
-            "/newClient.ClientNotificationService/HealthCheck",
-            request_serializer=new__client__service__pb2.HealthCheckRequest.SerializeToString,
-            response_deserializer=new__client__service__pb2.HealthCheckResponse.FromString,
-            _registered_method=True,
-        )
+                '/newClient.ClientNotificationService/HealthCheck',
+                request_serializer=new__client__service__pb2.HealthCheckRequest.SerializeToString,
+                response_deserializer=new__client__service__pb2.HealthCheckResponse.FromString,
+                _registered_method=True)
 
 
 class ClientNotificationServiceServicer(object):
-    """Client Notification service definition"""
+    """Client Notification service definition
+    """
 
     def NotifyNewClient(self, request, context):
-        """Notify the service about a new authenticated client that needs data streaming"""
+        """Notify the service about a new authenticated client that needs data streaming
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def HealthCheck(self, request, context):
-        """Health check endpoint"""
+        """Health check endpoint
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
 
 def add_ClientNotificationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-        "NotifyNewClient": grpc.unary_unary_rpc_method_handler(
-            servicer.NotifyNewClient,
-            request_deserializer=new__client__service__pb2.NewClientRequest.FromString,
-            response_serializer=new__client__service__pb2.NewClientResponse.SerializeToString,
-        ),
-        "HealthCheck": grpc.unary_unary_rpc_method_handler(
-            servicer.HealthCheck,
-            request_deserializer=new__client__service__pb2.HealthCheckRequest.FromString,
-            response_serializer=new__client__service__pb2.HealthCheckResponse.SerializeToString,
-        ),
+            'NotifyNewClient': grpc.unary_unary_rpc_method_handler(
+                    servicer.NotifyNewClient,
+                    request_deserializer=new__client__service__pb2.NewClientRequest.FromString,
+                    response_serializer=new__client__service__pb2.NewClientResponse.SerializeToString,
+            ),
+            'HealthCheck': grpc.unary_unary_rpc_method_handler(
+                    servicer.HealthCheck,
+                    request_deserializer=new__client__service__pb2.HealthCheckRequest.FromString,
+                    response_serializer=new__client__service__pb2.HealthCheckResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-        "newClient.ClientNotificationService", rpc_method_handlers
-    )
+            'newClient.ClientNotificationService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers(
-        "newClient.ClientNotificationService", rpc_method_handlers
-    )
+    server.add_registered_method_handlers('newClient.ClientNotificationService', rpc_method_handlers)
 
 
-# This class is part of an EXPERIMENTAL API.
+ # This class is part of an EXPERIMENTAL API.
 class ClientNotificationService(object):
-    """Client Notification service definition"""
+    """Client Notification service definition
+    """
 
     @staticmethod
-    def NotifyNewClient(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def NotifyNewClient(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/newClient.ClientNotificationService/NotifyNewClient",
+            '/newClient.ClientNotificationService/NotifyNewClient',
             new__client__service__pb2.NewClientRequest.SerializeToString,
             new__client__service__pb2.NewClientResponse.FromString,
             options,
@@ -120,26 +115,23 @@ class ClientNotificationService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)
 
     @staticmethod
-    def HealthCheck(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
+    def HealthCheck(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/newClient.ClientNotificationService/HealthCheck",
+            '/newClient.ClientNotificationService/HealthCheck',
             new__client__service__pb2.HealthCheckRequest.SerializeToString,
             new__client__service__pb2.HealthCheckResponse.FromString,
             options,
@@ -150,5 +142,4 @@ class ClientNotificationService(object):
             wait_for_ready,
             timeout,
             metadata,
-            _registered_method=True,
-        )
+            _registered_method=True)
