@@ -33,8 +33,6 @@ class Middleware:
         def wrapper(ch, method, properties, body):
             try:
                 callback_function(ch, method, properties, body)
-                # Manual acknowledgment after successful processing
-                ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
                 logging.error(f"action: rabbitmq_callback | result: fail | error: {e}")
                 # Reject and requeue on error
@@ -67,15 +65,18 @@ class Middleware:
         Note: Queues must be pre-declared by the authenticator service.
         This method only consumes from existing queues, it does not declare them.
         """
+        logging.info(f"Setting up consumer for queue: {queue_name}")
         # Use auto_ack=False for manual acknowledgment
         self._channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,  # Manual acknowledgment
         )
+        logging.info(f"Consumer setup completed for queue: {queue_name}")
 
     def start(self):
         try:
+            logging.info("Starting RabbitMQ consumption...")
             self._channel.start_consuming()
         except KeyboardInterrupt:
             logging.info("Received interrupt signal, stopping consumption")
