@@ -7,9 +7,7 @@ from google.protobuf.message import Message
 from proto import calibration_pb2, dataset_pb2
 from service.mlflow_logger import MlflowLogger
 from middleware.middleware import Middleware
-
-DATASET_EXCHANGE = "dataset-exchange"
-CALIBRATION_EXCHANGE = "calibration-exchange"
+from config.settings import settings
 
 
 class ClientProcessor:
@@ -49,24 +47,46 @@ class ClientProcessor:
             logging.info(f"Starting processing for client {self.client_id}")
 
         try:
-            # Set up consumers for both exchanges using the routing key
-            self.middleware._channel.queue_bind(
-                queue=self.routing_key,
-                exchange=DATASET_EXCHANGE,
-                routing_key=self.routing_key,
+            # Declare queue using routing key as queue name
+            logging.info(f"Declaring queue: {self.routing_key}")
+            self.middleware._channel.queue_declare(
+                queue=self.routing_key, durable=True, auto_delete=False
+            )
+            logging.info(f"Successfully declared queue: {self.routing_key}")
+
+            # Bind queue to both exchanges using the routing key
+            logging.info(
+                f"Binding queue {self.routing_key} to exchange {settings.INTER_CONNECTION_EXCHANGE}"
             )
             self.middleware._channel.queue_bind(
                 queue=self.routing_key,
-                exchange=CALIBRATION_EXCHANGE,
+                exchange=settings.INTER_CONNECTION_EXCHANGE,
                 routing_key=self.routing_key,
+            )
+            logging.info(
+                f"Successfully bound queue {self.routing_key} to {settings.INTER_CONNECTION_EXCHANGE}"
             )
 
+            logging.info(
+                f"Binding queue {self.routing_key} to exchange {settings.CALIBRATION_EXCHANGE}"
+            )
+            self.middleware._channel.queue_bind(
+                queue=self.routing_key,
+                exchange=settings.CALIBRATION_EXCHANGE,
+                routing_key=self.routing_key,
+            )
+            logging.info(
+                f"Successfully bound queue {self.routing_key} to {settings.CALIBRATION_EXCHANGE}"
+            )
+
+            logging.info(f"Starting consumption from queue: {self.routing_key}")
             self.middleware.basic_consume(
                 queue_name=self.routing_key,
                 callback_function=self._handle_message,
             )
 
             # Start consuming messages
+            logging.info(f"Starting message consumption for client {self.client_id}")
             self.middleware.start()
 
         except Exception as e:
@@ -99,52 +119,79 @@ class ClientProcessor:
 
     def _handle_message(self, ch, method, properties, body):
         """Handle messages from both dataset and calibration exchanges."""
+        logging.info(
+            f"Received message for client {self.client_id}, delivery_tag: {method.delivery_tag}"
+        )
         try:
             # Try to parse as DataBatch
             try:
                 message = dataset_pb2.DataBatch()
                 message.ParseFromString(body)
+                logging.info(
+                    f"Successfully parsed DataBatch for client {self.client_id}, batch_index: {message.batch_index}"
+                )
                 self._handle_data_message(ch, method, properties, message)
                 return
-            except Exception:
+            except Exception as e:
+                logging.debug(f"Failed to parse as DataBatch: {e}")
                 pass
             # Try to parse as Predictions
             try:
                 message = calibration_pb2.Predictions()
                 message.ParseFromString(body)
+                logging.info(
+                    f"Successfully parsed Predictions for client {self.client_id}, batch_index: {message.batch_index}"
+                )
                 self._handle_probability_message(ch, method, properties, message)
                 return
-            except Exception:
+            except Exception as e:
+                logging.debug(f"Failed to parse as Predictions: {e}")
                 pass
-            raise ValueError("Unknown message type received on routing key queue")
+            # If we get here, the message type is unknown
+            logging.error(f"Unknown message type received for client {self.client_id}")
+            ch.basic_ack(
+                delivery_tag=method.delivery_tag
+            )  # Acknowledge to remove from queue
         except Exception as e:
             logging.error(f"Error processing message for client {self.client_id}: {e}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     def _handle_data_message(self, ch, method, properties, message):
-        logging.debug(
-            f"Client {self.client_id}: Received data batch {message.batch_index}"
-        )
-        image_shape = (1, 28, 28)
-        image_dtype = np.float32
-        image_size = np.prod(image_shape)
-        images = np.frombuffer(message.data, dtype=image_dtype)
-        num_floats = images.size
-        num_images = num_floats // image_size
-        if num_images * image_size != num_floats:
-            raise ValueError("Incompatible data size for image")
-        images = images.reshape((num_images, *image_shape))
-        self._store_data(message.batch_index, images, message.is_last_batch)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        try:
+            logging.debug(
+                f"Client {self.client_id}: Received data batch {message.batch_index}"
+            )
+            image_shape = (1, 28, 28)
+            image_dtype = np.float32
+            image_size = np.prod(image_shape)
+            images = np.frombuffer(message.data, dtype=image_dtype)
+            num_floats = images.size
+            num_images = num_floats // image_size
+            if num_images * image_size != num_floats:
+                raise ValueError("Incompatible data size for image")
+            images = images.reshape((num_images, *image_shape))
+            self._store_data(message.batch_index, images, message.is_last_batch)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except Exception as e:
+            logging.error(
+                f"Error handling data message for client {self.client_id}: {e}"
+            )
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     def _handle_probability_message(self, ch, method, properties, message):
-        logging.debug(
-            f"Client {self.client_id}: Received probability batch {message.batch_index}"
-        )
-        probs = [list(p.values) for p in message.pred]
-        probs_array = np.array(probs, dtype=np.float32)
-        self._store_probabilities(message.batch_index, probs_array, message.eof)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        try:
+            logging.debug(
+                f"Client {self.client_id}: Received probability batch {message.batch_index}"
+            )
+            probs = [list(p.values) for p in message.pred]
+            probs_array = np.array(probs, dtype=np.float32)
+            self._store_probabilities(message.batch_index, probs_array, message.eof)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except Exception as e:
+            logging.error(
+                f"Error handling probability message for client {self.client_id}: {e}"
+            )
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
     def _store_data(self, batch_index: int, inputs: np.ndarray, is_last_batch: bool):
         with self._batches_lock:
