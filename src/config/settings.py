@@ -24,11 +24,10 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     ARTIFACTS_PATH: str = os.getenv("ARTIFACTS_PATH", "artifacts")
 
-    # Legacy queue names (for backward compatibility)
-    PROB_OUTPUTS_QUEUE_NAME: str = "calibration_outputs_queue"
-    DATA_INPUTS_QUEUE_NAME: str = "calibration_inputs_queue"
+    # Exchange Configuration
     EXCHANGE_TYPE: str = "direct"
-    EXCHANGE_NAME: str = "calibration_exchange"
+    INTER_CONNECTION_EXCHANGE: str = "inter-connection-exchange"
+    CALIBRATION_EXCHANGE: str = "calibration-exchange"
 
 
 # Global settings instance
