@@ -15,8 +15,9 @@ service ClientNotificationService {
 message NewClientRequest {
   string client_id = 1;
   string routing_key = 2;
+  string queue_calibration = 3;
+  string queue_inter_connection = 4;
 }
-
 // Response message acknowledging the new client notification
 message NewClientResponse {
   string status = 1;       // Status of the operation (e.g., "OK", "ERROR")
