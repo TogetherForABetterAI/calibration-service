@@ -9,21 +9,25 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the source code
-COPY src/ /app/
+COPY src/ /app/src/
 
 # Set PYTHONPATH
-ENV PYTHONPATH=/app/
+ENV PYTHONPATH=/app
 
-# Expose the port the app runs on
-EXPOSE 8001
+# Expose the gRPC port
+EXPOSE 50052
 
+# Install protoc for proto compilation
 RUN apt-get update && apt-get install -y unzip wget \
   && wget https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-linux-x86_64.zip \
   && unzip protoc-31.1-linux-x86_64.zip -d /usr/local \
-  && rm protoc-31.1-linux-x86_64.zip
+  && rm protoc-31.1-linux-x86_64.zip \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN protoc --proto_path=/app/proto --python_out=/app/proto /app/proto/calibration.proto
-RUN protoc --proto_path=/app/proto --python_out=/app/proto /app/proto/dataset.proto
+# Compile proto files
+RUN protoc --proto_path=/app/src/proto --python_out=/app/src/proto /app/src/proto/calibration.proto
+RUN protoc --proto_path=/app/src/proto --python_out=/app/src/proto /app/src/proto/dataset.proto
 
-# Fix the path to the main module
-CMD ["uvicorn", "main:app", "--port", "8001", "--host", "0.0.0.0", "--reload"]
+# Run the calibration service
+CMD ["python", "src/main.py"]
