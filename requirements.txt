@@ -5,3 +5,6 @@ protobuf
 numpy
 boto3
 pandas
+seaborn
+matplotlib
+scikit-learn
