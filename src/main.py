@@ -2,7 +2,7 @@ import signal
 import sys
 import logging
 from core.client_manager import ClientManager
-from api.calibration_service import GrpcServer
+from gRPC.server import GrpcServer
 from config.settings import settings
 
 # Configure logging
