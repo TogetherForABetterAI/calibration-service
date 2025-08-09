@@ -3,27 +3,23 @@ import pandas as pd
 import mlflow
 import os
 import logging
-from config.settings import settings
-
+from lib.config import config_params
 
 class MlflowLogger:
     def __init__(self, client_id: str = None):
-        # Use settings for artifacts path
-        artifacts_path = os.path.join(os.getcwd(), settings.ARTIFACTS_PATH)
+        artifacts_path = os.path.join(os.getcwd(), config_params["artifacts_path"])
         os.makedirs(artifacts_path, exist_ok=True)
 
         # Create client-specific experiment name
         experiment_name = (
-            f"{settings.MLFLOW_EXPERIMENT_NAME} - Client {client_id}"
+            f"{config_params['experiment_name']} - Client {client_id}"
             if client_id
-            else settings.MLFLOW_EXPERIMENT_NAME
+            else config_params["experiment_name"]
         )
         mlflow.set_experiment(experiment_name)
 
         self._artifacts_path = artifacts_path
         self._client_id = client_id
-        self._batches = {}
-
         # Create client-specific run name
         run_name = (
             f"EvaluationSession-{client_id}" if client_id else "EvaluationSession"
@@ -32,41 +28,15 @@ class MlflowLogger:
 
         client_log = f" for client {client_id}" if client_id else ""
         logging.info(f"[MLflow] Started global evaluation run{client_log}")
-
-        self._eof_inputs_received = False
-        self._eof_outputs_received = False
-
-    def store_outputs(self, batch_index: int, probs: np.ndarray, is_last_batch: bool):
-        self._store(batch_index, "probs", probs)
-
-        if is_last_batch:
-            self._eof_outputs_received = True
-            self._try_end_run()
-
-    def store_input_data(
-        self, batch_index: int, inputs: np.ndarray, is_last_batch: bool
-    ):
-        self._store(batch_index, "inputs", inputs)
-
-        if is_last_batch:
-            self._eof_inputs_received = True
-            self._try_end_run()
-
-    def _store(self, batch_index: int, kind: str, data: np.ndarray):
-        if batch_index not in self._batches:
-            self._batches[batch_index] = {"inputs": None, "probs": None}
-
-        self._batches[batch_index][kind] = data
-
-        entry = self._batches[batch_index]
-        if entry["inputs"] is not None and entry["probs"] is not None:
-            self.log_single_batch(batch_index, entry["probs"], entry["inputs"])
-            del self._batches[batch_index]
-
+ 
     def log_single_batch(self, batch_index: int, probs: np.ndarray, inputs: np.ndarray):
         input_flat = inputs.reshape(inputs.shape[0], -1).tolist()
         probs_list = probs.tolist()
 
+        logging.info(
+            f"[MLflow] Logging batch {batch_index} with {len(probs_list)} probabilities and {len(input_flat)} inputs"
+        )
+        
         df = pd.DataFrame({"input": input_flat, "probabilities": probs_list})
 
         # Create client-specific filename
@@ -90,6 +60,3 @@ class MlflowLogger:
         client_log = f" for client {self._client_id}" if self._client_id else ""
         logging.info(f"[MLflow] Run ended{client_log}")
 
-    def _try_end_run(self):
-        if self._eof_inputs_received and self._eof_outputs_received:
-            self.end_run()

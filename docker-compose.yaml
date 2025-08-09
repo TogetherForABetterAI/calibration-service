@@ -1,30 +1,12 @@
 services:
   calibration:
     build: .
-    environment:
-      # MLflow Configuration
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_ACCESS_KEY_ID=minio_user
-      - AWS_SECRET_ACCESS_KEY=minio_password
-      - MLFLOW_EXPERIMENT_NAME=Calibration Experiment for MNIST
-      
-      # RabbitMQ Configuration
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASS=guest
-      
-      # gRPC Configuration
-      - GRPC_PORT=50052
-      
-      # Application Configuration
-      - LOG_LEVEL=INFO
-      - ARTIFACTS_PATH=artifacts
+    env_file: .env
     ports:
       - "50052:50052"
     volumes:
       - ./artifacts:/app/artifacts
+      - ./reports:/app/reports
     networks:
       - tpp-network
 

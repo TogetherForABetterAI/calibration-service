@@ -1,22 +1,21 @@
-import threading
 import logging
 from typing import Dict, Optional
 from middleware.middleware import Middleware
 from service.client_processor import ClientProcessor
-
+from src.lib.rabbitmq_conn import connect_to_rabbitmq
+from multiprocessing import Process, Lock
 
 class ClientManager:
     def __init__(self):
         self._clients: Dict[str, ClientProcessor] = {}
-        self._client_threads: Dict[str, threading.Thread] = {}
-        self._lock = threading.Lock()
+        self._clients_processes: Dict[str, Process] = {}
+        self._lock = Lock()
+        self._rabbitmq_channels = {}
 
     def register_client(
         self, client_id: str, queue_calibration: str, queue_inter_connection: str
     ) -> bool:
         """
-        Register a new client and start its processing thread.
-
         Args:
             client_id: Unique identifier for the client
             queue_calibration: Queue name for calibration messages
@@ -31,27 +30,25 @@ class ClientManager:
                 return False
 
             try:
-                # Create a new middleware connection for this client
-                middleware = Middleware()
-
-                # Create client processor
+                conn = connect_to_rabbitmq()
+                channel = conn.channel()
+                self._rabbitmq_channels[client_id] = channel
+                
                 client_processor = ClientProcessor(
                     client_id=client_id,
                     queue_calibration=queue_calibration,
                     queue_inter_connection=queue_inter_connection,
-                    middleware=middleware,
+                    middleware=Middleware(channel),
                 )
-
-                # Create and start the processing thread
-                thread = threading.Thread(
+                process = Process(
                     target=client_processor.start_processing,
                     name=f"client-{client_id}",
                     daemon=True,
                 )
 
                 self._clients[client_id] = client_processor
-                self._client_threads[client_id] = thread
-                thread.start()
+                self._clients_processes[client_id] = process
+                process.start()
 
                 logging.info(
                     f"Successfully registered client {client_id} with queues: calibration={queue_calibration}, inter_connection={queue_inter_connection}"
@@ -64,8 +61,6 @@ class ClientManager:
 
     def unregister_client(self, client_id: str) -> bool:
         """
-        Unregister a client and stop its processing thread.
-
         Args:
             client_id: Unique identifier for the client
 
@@ -82,13 +77,12 @@ class ClientManager:
                 client_processor = self._clients[client_id]
                 client_processor.stop_processing()
 
-                # Wait for thread to finish (with timeout)
-                thread = self._client_threads[client_id]
-                thread.join(timeout=5.0)
+                process = self._clients_processes[client_id]
+                process.join()
 
                 # Clean up
                 del self._clients[client_id]
-                del self._client_threads[client_id]
+                del self._clients_processes[client_id]
 
                 logging.info(f"Successfully unregistered client {client_id}")
                 return True
