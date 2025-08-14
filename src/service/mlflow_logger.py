@@ -4,6 +4,7 @@ import mlflow
 import os
 import logging
 from lib.config import config_params
+from typing import List
 
 class MlflowLogger:
     def __init__(self, client_id: str = None):
@@ -29,15 +30,15 @@ class MlflowLogger:
         client_log = f" for client {client_id}" if client_id else ""
         logging.info(f"[MLflow] Started global evaluation run{client_log}")
  
-    def log_single_batch(self, batch_index: int, probs: np.ndarray, inputs: np.ndarray):
+    def log_single_batch(self, batch_index: int, probs: np.ndarray, inputs: np.ndarray, labels: List[int]):
         input_flat = inputs.reshape(inputs.shape[0], -1).tolist()
         probs_list = probs.tolist()
 
         logging.info(
             f"[MLflow] Logging batch {batch_index} with {len(probs_list)} probabilities and {len(input_flat)} inputs"
         )
-        
-        df = pd.DataFrame({"input": input_flat, "probabilities": probs_list})
+
+        df = pd.DataFrame({"input": input_flat, "y_pred": probs_list, "y_test": labels})
 
         # Create client-specific filename
         client_suffix = f"-{self._client_id}" if self._client_id else ""
