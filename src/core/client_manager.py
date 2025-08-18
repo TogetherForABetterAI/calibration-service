@@ -13,13 +13,13 @@ class ClientManager:
         self._rabbitmq_channels = {}
 
     def register_client(
-        self, client_id: str, queue_calibration: str, queue_inter_connection: str
+        self, client_id: str, outputs_queue_calibration: str, inputs_queue_calibration: str
     ) -> bool:
         """
         Args:
             client_id: Unique identifier for the client
-            queue_calibration: Queue name for calibration messages
-            queue_inter_connection: Queue name for inter-connection messages
+            outputs_queue_calibration: Queue name for calibration messages
+            inputs_queue_calibration: Queue name for inter-connection messages
 
         Returns:
             bool: True if client was successfully registered, False otherwise
@@ -36,8 +36,8 @@ class ClientManager:
                 
                 client_processor = ClientProcessor(
                     client_id=client_id,
-                    queue_calibration=queue_calibration,
-                    queue_inter_connection=queue_inter_connection,
+                    outputs_queue_calibration=outputs_queue_calibration,
+                    inputs_queue_calibration=inputs_queue_calibration,
                     middleware=Middleware(channel),
                 )
                 process = Process(
@@ -51,7 +51,7 @@ class ClientManager:
                 process.start()
 
                 logging.info(
-                    f"Successfully registered client {client_id} with queues: calibration={queue_calibration}, inter_connection={queue_inter_connection}"
+                    f"Successfully registered client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
                 )
                 return True
 

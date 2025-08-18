@@ -11,13 +11,13 @@ class ClientProcessor:
     def __init__(
         self,
         client_id: str,
-        queue_calibration: str,
-        queue_inter_connection: str,
+        outputs_queue_calibration: str,
+        inputs_queue_calibration: str,
         middleware: Middleware,
     ):
         self.client_id = client_id
-        self.queue_calibration = queue_calibration
-        self.queue_inter_connection = queue_inter_connection
+        self.outputs_queue_calibration = outputs_queue_calibration
+        self.inputs_queue_calibration = inputs_queue_calibration
         self.middleware = middleware
 
         self._report_builder = ReportBuilder(client_id=client_id)
@@ -35,11 +35,11 @@ class ClientProcessor:
 
         # try:
         self.middleware.basic_consume(
-            queue_name=self.queue_inter_connection,
+            queue_name=self.inputs_queue_calibration,
             callback_function=self._handle_data_message,
         )
         self.middleware.basic_consume(
-            queue_name=self.queue_calibration,
+            queue_name=self.outputs_queue_calibration,
             callback_function=self._handle_probability_message,
         )
 
@@ -67,20 +67,22 @@ class ClientProcessor:
         message = dataset_pb2.DataBatch()
         message.ParseFromString(body)
         logging.info(
-            f"Successfully parsed DataBatch for client {self.client_id}, batch_index: {message.batch_index}"
+            f"action: receive_data_batch | result: success | eof {message.is_last_batch}"
         )
  
         images = self._process_input_data(message.data)
 
-        self.store_input_data(message.batch_index, images, message.is_last_batch, message.labels)
+        self.store_input_data(message.batch_index, images, message.is_last_batch, list(message.labels))
 
         if self._eof:
             #TODO: Get y_pred & y_test from calibration
-            y_pred = [batch[DataType.PROBS] for batch in self._batches.values()]
-            y_test = [batch[DataType.LABELS] for batch in self._batches.values()]
+            y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
+            y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
             self._report_builder.build_report(y_test, y_pred)
+            logging.info(f"action: build_report | result: success")
             self.stop_processing()
             self._report_builder.send_report()
+            logging.info(f"action: send_report | result: success")
                 
         # except Exception as e:
         #     logging.error(
@@ -108,7 +110,7 @@ class ClientProcessor:
         message.ParseFromString(body)
 
         logging.info(
-            f"Successfully parsed Predictions for client {self.client_id}, batch_index: {message.batch_index}"
+            f"action: receive_predictions | result: success | eof {message.eof}"
         )
 
         probs = [list(p.values) for p in message.pred]
@@ -117,11 +119,13 @@ class ClientProcessor:
         self.store_outputs(message.batch_index, probs_array, message.eof)
         if self._eof:
             #TODO: Get y_pred & y_test from calibration
-            y_pred = [batch[DataType.PROBS] for batch in self._batches.values()]
-            y_test = [batch[DataType.LABELS] for batch in self._batches.values()]
+            y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
+            y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
             self._report_builder.build_report(y_test, y_pred)
+            logging.info(f"action: build_report | result: success")
             self.stop_processing()
             self._report_builder.send_report()
+            logging.info(f"action: send_report | result: success")
 
         # except Exception as e:
         #     logging.error(
@@ -157,7 +161,6 @@ class ClientProcessor:
             # del self._batches[batch_index] # Lo comento por ahora, porque uso estos datos para armar el reporte (provisoriamente hasta tener acceso al paquete UQM), pero es correcto que se borren.
             
             if eof:
-                logging.info(f"data_batch: {self._batches}")
                 self._eof = True
 
 

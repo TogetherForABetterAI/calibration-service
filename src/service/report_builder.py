@@ -3,9 +3,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import logging
 from reportlab.lib.colors import grey
-import base64
 from email.message import EmailMessage
-
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from lib.config import config_params
 import smtplib
@@ -24,6 +22,8 @@ class ReportBuilder:
     def build_report(self, y_test, probs):
         logging.info(f"Generating report for client {self._client_id}")
         
+        for prob in probs:
+            logging.info(f"Longitud de prob: {len(prob)}")
         y_pred = np.argmax(probs, axis=1)
         confidences = np.max(probs, axis=1)
         logging.info(f"y_test: {y_test}")
@@ -72,17 +72,6 @@ class ReportBuilder:
         conf_hist_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         plt.savefig(conf_hist_file.name)
         plt.close()
-        
-        # ---- 3. Accuracy vs. Confidence ----
-        sorted_idx = np.argsort(confidences)
-        rolling_acc = np.cumsum(y_pred[sorted_idx] == y_test[sorted_idx]) / np.arange(1, len(y_test)+1)
-        plt.plot(confidences[sorted_idx], rolling_acc, color="green")
-        plt.xlabel("Confidence (sorted)")
-        plt.ylabel("Cumulative Accuracy")
-        plt.title("Accuracy vs. Confidence")
-        acc_conf_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        plt.savefig(acc_conf_file.name)
-        plt.close()
 
         metrics = [
             ("Accuracy", accuracy),
@@ -100,8 +89,6 @@ class ReportBuilder:
         self._canvas.drawImage(cm_file.name, 50, img_y_start - 200, width=500, height=200)
         img_y_start -= 220
         self._canvas.drawImage(conf_hist_file.name, 50, img_y_start - 200, width=500, height=200)
-        img_y_start -= 220
-        self._canvas.drawImage(acc_conf_file.name, 50, img_y_start - 200, width=500, height=200)
 
             
         
@@ -116,7 +103,6 @@ class ReportBuilder:
         
         os.unlink(cm_file.name)
         os.unlink(conf_hist_file.name)
-        os.unlink(acc_conf_file.name)
         
     def save_report(self):
         self._canvas.save()
