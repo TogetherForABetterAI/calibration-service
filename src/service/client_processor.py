@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List
+from mlflow import MlflowClient
 import numpy as np
 from proto import calibration_pb2, dataset_pb2
 from service.mlflow_logger import MlflowLogger
@@ -14,6 +15,7 @@ class ClientProcessor:
         outputs_queue_calibration: str,
         inputs_queue_calibration: str,
         middleware: Middleware,
+        mlflow_client: MlflowClient
     ):
         self.client_id = client_id
         self.outputs_queue_calibration = outputs_queue_calibration
@@ -25,7 +27,7 @@ class ClientProcessor:
         self._batches: Dict[int, Dict] = {}
 
         # MLflow logger for this client
-        self._mlflow_logger = MlflowLogger(client_id=client_id)
+        self._mlflow_logger = MlflowLogger(mlflow_client=mlflow_client, client_id=client_id)
 
         logging.info(f"Initialized ClientProcessor for client {client_id}")
 

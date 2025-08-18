@@ -1,5 +1,7 @@
 import logging
 from typing import Dict, Optional
+
+from mlflow import MlflowClient
 from middleware.middleware import Middleware
 from service.client_processor import ClientProcessor
 from src.lib.rabbitmq_conn import connect_to_rabbitmq
@@ -24,6 +26,9 @@ class ClientManager:
         Returns:
             bool: True if client was successfully registered, False otherwise
         """
+        client = MlflowClient()
+
+
         with self._lock:
             if client_id in self._clients:
                 logging.warning(f"Client {client_id} is already registered")
@@ -39,6 +44,7 @@ class ClientManager:
                     outputs_queue_calibration=outputs_queue_calibration,
                     inputs_queue_calibration=inputs_queue_calibration,
                     middleware=Middleware(channel),
+                    mlflow_client=client
                 )
                 process = Process(
                     target=client_processor.start_processing,

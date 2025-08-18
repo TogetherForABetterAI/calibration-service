@@ -21,14 +21,10 @@ class ReportBuilder:
 
     def build_report(self, y_test, probs):
         logging.info(f"Generating report for client {self._client_id}")
-        
-        for prob in probs:
-            logging.info(f"Longitud de prob: {len(prob)}")
+
         y_pred = np.argmax(probs, axis=1)
         confidences = np.max(probs, axis=1)
-        logging.info(f"y_test: {y_test}")
-        logging.info(f"y_pred: {y_pred}")
-        logging.info(f"confidences: {confidences}")
+
 
         accuracy = accuracy_score(y_test, y_pred)
         precision = precision_score(y_test, y_pred, average='weighted')

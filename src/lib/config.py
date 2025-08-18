@@ -12,7 +12,8 @@ def initialize_config():
 
     config_params["artifacts_path"] = os.getenv("ARTIFACTS_PATH", "artifacts")
     config_params["experiment_name"] = os.getenv("MLFLOW_EXPERIMENT_NAME", "Global Calibration Experiment")
-
+    config_params["mlflow_tracking_uri"] = os.getenv("TRACKING_URI_MLFLOW", "http://mlflow:5000")
+    
     # Application Configuration
     config_params["logging_level"] = os.getenv("LOGGING_LEVEL", "INFO")
     
