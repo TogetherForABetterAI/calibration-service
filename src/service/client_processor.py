@@ -81,9 +81,9 @@ class ClientProcessor:
             y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
             y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
             self._report_builder.build_report(y_test, y_pred)
-            logging.info(f"action: build_report | result: success")
+            logging.info(f"action:   | result: success")
             self.stop_processing()
-            self._report_builder.send_report()
+            # self._report_builder.send_report()
             logging.info(f"action: send_report | result: success")
                 
         # except Exception as e:
@@ -126,7 +126,7 @@ class ClientProcessor:
             self._report_builder.build_report(y_test, y_pred)
             logging.info(f"action: build_report | result: success")
             self.stop_processing()
-            self._report_builder.send_report()
+            # self._report_builder.send_report()
             logging.info(f"action: send_report | result: success")
 
         # except Exception as e:
