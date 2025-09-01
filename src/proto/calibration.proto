@@ -4,7 +4,6 @@ package calibration;
 
 message PredictionList {
   repeated float values = 1;
-  int32 label = 2;
 }
 
 message Predictions {
@@ -12,4 +11,6 @@ message Predictions {
   bool eof = 2;
   int32 batch_index = 3;
 }
+
+
 

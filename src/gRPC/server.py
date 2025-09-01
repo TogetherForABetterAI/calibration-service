@@ -14,47 +14,41 @@ class ClientNotificationServiceServicer(
         logging.info("ClientNotificationServiceServicer initialized")
 
     def NotifyNewClient(self, request, context):
-        try:
-            client_id = request.client_id
-            queue_calibration = request.queue_calibration
-            queue_inter_connection = request.queue_inter_connection
+        client_id = request.client_id
+        outputs_queue_calibration = request.outputs_queue_calibration
+        inputs_queue_calibration = request.inputs_queue_calibration
 
-            logging.info(
-                f"Received NotifyNewClient request for client {client_id} with queues: calibration={queue_calibration}, inter_connection={queue_inter_connection}"
-            )
+        logging.info(
+            f"Received NotifyNewClient request for client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
+        )
 
-            if not client_id or not queue_calibration or not queue_inter_connection:
-                error_msg = "Missing required parameters: client_id, queue_calibration, or queue_inter_connection"
-                logging.error(error_msg)
-                return new_client_service_pb2.NewClientResponse(
-                    status="ERROR", message=error_msg
-                )
-
-            success = self.client_manager.register_client(
-                client_id=client_id,
-                queue_calibration=queue_calibration,
-                queue_inter_connection=queue_inter_connection,
-            )
-
-            if success:
-                success_msg = f"Successfully registered client {client_id}"
-                logging.info(success_msg)
-                return new_client_service_pb2.NewClientResponse(
-                    status="OK", message=success_msg
-                )
-            else:
-                error_msg = f"Failed to register client {client_id}"
-                logging.error(error_msg)
-                return new_client_service_pb2.NewClientResponse(
-                    status="ERROR", message=error_msg
-                )
-
-        except Exception as e:
-            error_msg = f"Unexpected error in NotifyNewClient: {str(e)}"
+        if not client_id or not outputs_queue_calibration or not inputs_queue_calibration:
+            error_msg = "Missing required parameters: client_id, outputs_queue_calibration, or inputs_queue_calibration"
             logging.error(error_msg)
             return new_client_service_pb2.NewClientResponse(
                 status="ERROR", message=error_msg
             )
+            
+        try: 
+            self.client_manager.register_client(
+                client_id=client_id,
+                outputs_queue_calibration=outputs_queue_calibration,
+                inputs_queue_calibration=inputs_queue_calibration,
+            )
+        except Exception as e:
+            error_msg = f"Failed to register client {client_id}"
+            logging.error(error_msg)
+            return new_client_service_pb2.NewClientResponse(
+                status="ERROR", message=error_msg
+            )
+
+        success_msg = f"Successfully registered client {client_id}"
+        logging.info(success_msg)
+        return new_client_service_pb2.NewClientResponse(
+            status="OK", message=success_msg
+        )
+               
+    
 
     def HealthCheck(self, request, context):
         try:

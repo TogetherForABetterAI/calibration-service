@@ -1,71 +1,79 @@
-import threading
 import logging
 from typing import Dict, Optional
+
+from mlflow import MlflowClient
 from middleware.middleware import Middleware
 from service.client_processor import ClientProcessor
-
+from src.lib.rabbitmq_conn import connect_to_rabbitmq
+from multiprocessing import Process, Lock
 
 class ClientManager:
     def __init__(self):
         self._clients: Dict[str, ClientProcessor] = {}
-        self._client_threads: Dict[str, threading.Thread] = {}
-        self._lock = threading.Lock()
+        self._clients_processes: Dict[str, Process] = {}
+        self._lock = Lock()
+        self._rabbitmq_channels = {}
 
     def register_client(
-        self, client_id: str, queue_calibration: str, queue_inter_connection: str
-    ) -> bool:
+        self, client_id: str, outputs_queue_calibration: str, inputs_queue_calibration: str
+    ):
         """
-        Register a new client and start its processing thread.
-
         Args:
             client_id: Unique identifier for the client
-            queue_calibration: Queue name for calibration messages
-            queue_inter_connection: Queue name for inter-connection messages
+            outputs_queue_calibration: Queue name for calibration messages
+            inputs_queue_calibration: Queue name for inter-connection messages
 
         Returns:
             bool: True if client was successfully registered, False otherwise
         """
+        client = MlflowClient()
+
+
         with self._lock:
             if client_id in self._clients:
                 logging.warning(f"Client {client_id} is already registered")
                 return False
 
             try:
-                # Create a new middleware connection for this client
-                middleware = Middleware()
+                conn = connect_to_rabbitmq()
+            except Exception as e:
+                logging.error(f"Failed to connect to RabbitMQ: {e}")
+                raise e
 
-                # Create client processor
+            channel = conn.channel()
+            self._rabbitmq_channels[client_id] = channel
+
+            try:
                 client_processor = ClientProcessor(
                     client_id=client_id,
-                    queue_calibration=queue_calibration,
-                    queue_inter_connection=queue_inter_connection,
-                    middleware=middleware,
-                )
-
-                # Create and start the processing thread
-                thread = threading.Thread(
-                    target=client_processor.start_processing,
+                        outputs_queue_calibration=outputs_queue_calibration,
+                        inputs_queue_calibration=inputs_queue_calibration,
+                        middleware=Middleware(channel),
+                        mlflow_client=client
+                    )
+            except Exception as e:
+                logging.error(f"Failed to register client {client_id}: {e}")
+                raise e
+            
+            process = Process(
+                target=client_processor.start_processing,
                     name=f"client-{client_id}",
                     daemon=True,
                 )
 
-                self._clients[client_id] = client_processor
-                self._client_threads[client_id] = thread
-                thread.start()
+            self._clients[client_id] = client_processor
+            self._clients_processes[client_id] = process
+            process.start()
 
-                logging.info(
-                    f"Successfully registered client {client_id} with queues: calibration={queue_calibration}, inter_connection={queue_inter_connection}"
-                )
-                return True
+            logging.info(
+                f"Successfully registered client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
+            )
 
-            except Exception as e:
-                logging.error(f"Failed to register client {client_id}: {e}")
-                return False
+
+
 
     def unregister_client(self, client_id: str) -> bool:
         """
-        Unregister a client and stop its processing thread.
-
         Args:
             client_id: Unique identifier for the client
 
@@ -82,13 +90,12 @@ class ClientManager:
                 client_processor = self._clients[client_id]
                 client_processor.stop_processing()
 
-                # Wait for thread to finish (with timeout)
-                thread = self._client_threads[client_id]
-                thread.join(timeout=5.0)
+                process = self._clients_processes[client_id]
+                process.join()
 
                 # Clean up
                 del self._clients[client_id]
-                del self._client_threads[client_id]
+                del self._clients_processes[client_id]
 
                 logging.info(f"Successfully unregistered client {client_id}")
                 return True

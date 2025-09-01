@@ -1,41 +1,22 @@
 import pika
 import logging
-from config.settings import settings
+from lib.config import config_params
 
 
 class Middleware:
-    def __init__(self):
-        # Create connection parameters using settings
-        credentials = pika.PlainCredentials(
-            settings.RABBITMQ_USER, settings.RABBITMQ_PASS
-        )
-        parameters = pika.ConnectionParameters(
-            host=settings.RABBITMQ_HOST,
-            port=settings.RABBITMQ_PORT,
-            credentials=credentials,
-            heartbeat=600,
-            blocked_connection_timeout=300,
-        )
-
-        # Establish connection
-        self._connection = pika.BlockingConnection(parameters)
-        self._channel = self._connection.channel()
-
-        # Configure channel for reliable delivery
+    def __init__(self, channel):
+        self._channel = channel
         self._channel.confirm_delivery()
-        self._channel.basic_qos(prefetch_count=1)  # Fair load distribution
+        self._channel.basic_qos(prefetch_count=1)  
 
-        logging.info(
-            f"Connected to RabbitMQ at {settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}"
-        )
 
     def callback_wrapper(self, callback_function):
         def wrapper(ch, method, properties, body):
             try:
                 callback_function(ch, method, properties, body)
+                ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
                 logging.error(f"action: rabbitmq_callback | result: fail | error: {e}")
-                # Reject and requeue on error
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
         return wrapper
@@ -66,11 +47,11 @@ class Middleware:
         This method only consumes from existing queues, it does not declare them.
         """
         logging.info(f"Setting up consumer for queue: {queue_name}")
-        # Use auto_ack=False for manual acknowledgment
+
         self._channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
-            auto_ack=False,  # Manual acknowledgment
+            auto_ack=False,  
         )
         logging.info(f"Consumer setup completed for queue: {queue_name}")
 
@@ -80,9 +61,6 @@ class Middleware:
             self._channel.start_consuming()
         except KeyboardInterrupt:
             logging.info("Received interrupt signal, stopping consumption")
-            self.close()
-        except Exception as e:
-            logging.error(f"Error during consumption: {e}")
             self.close()
 
     def close(self):
