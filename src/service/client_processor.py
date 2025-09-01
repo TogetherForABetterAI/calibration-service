@@ -26,8 +26,11 @@ class ClientProcessor:
         self._eof = False
         self._batches: Dict[int, Dict] = {}
 
-        # MLflow logger for this client
-        self._mlflow_logger = MlflowLogger(mlflow_client=mlflow_client, client_id=client_id)
+        try:
+            self._mlflow_logger = MlflowLogger(mlflow_client=mlflow_client, client_id=client_id)
+        except Exception as e:
+            logging.error(f"Failed to initialize MLflow logger for client {client_id}: {e}")
+            return
 
         logging.info(f"Initialized ClientProcessor for client {client_id}")
 

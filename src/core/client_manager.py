@@ -16,7 +16,7 @@ class ClientManager:
 
     def register_client(
         self, client_id: str, outputs_queue_calibration: str, inputs_queue_calibration: str
-    ) -> bool:
+    ):
         """
         Args:
             client_id: Unique identifier for the client
@@ -36,34 +36,41 @@ class ClientManager:
 
             try:
                 conn = connect_to_rabbitmq()
-                channel = conn.channel()
-                self._rabbitmq_channels[client_id] = channel
-                
+            except Exception as e:
+                logging.error(f"Failed to connect to RabbitMQ: {e}")
+                raise e
+
+            channel = conn.channel()
+            self._rabbitmq_channels[client_id] = channel
+
+            try:
                 client_processor = ClientProcessor(
                     client_id=client_id,
-                    outputs_queue_calibration=outputs_queue_calibration,
-                    inputs_queue_calibration=inputs_queue_calibration,
-                    middleware=Middleware(channel),
-                    mlflow_client=client
-                )
-                process = Process(
-                    target=client_processor.start_processing,
+                        outputs_queue_calibration=outputs_queue_calibration,
+                        inputs_queue_calibration=inputs_queue_calibration,
+                        middleware=Middleware(channel),
+                        mlflow_client=client
+                    )
+            except Exception as e:
+                logging.error(f"Failed to register client {client_id}: {e}")
+                raise e
+            
+            process = Process(
+                target=client_processor.start_processing,
                     name=f"client-{client_id}",
                     daemon=True,
                 )
 
-                self._clients[client_id] = client_processor
-                self._clients_processes[client_id] = process
-                process.start()
+            self._clients[client_id] = client_processor
+            self._clients_processes[client_id] = process
+            process.start()
 
-                logging.info(
-                    f"Successfully registered client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
-                )
-                return True
+            logging.info(
+                f"Successfully registered client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
+            )
 
-            except Exception as e:
-                logging.error(f"Failed to register client {client_id}: {e}")
-                return False
+
+
 
     def unregister_client(self, client_id: str) -> bool:
         """
