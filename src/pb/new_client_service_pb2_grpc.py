@@ -5,7 +5,7 @@ import warnings
 
 from . import new_client_service_pb2 as new__client__service__pb2
 
-GRPC_GENERATED_VERSION = '1.73.1'
+GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -26,7 +26,8 @@ if _version_not_supported:
 
 
 class ClientNotificationServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """Client Notification service definition
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -35,19 +36,20 @@ class ClientNotificationServiceStub(object):
             channel: A grpc.Channel.
         """
         self.NotifyNewClient = channel.unary_unary(
-                '/new_client.ClientNotificationService/NotifyNewClient',
+                '/newClient.ClientNotificationService/NotifyNewClient',
                 request_serializer=new__client__service__pb2.NewClientRequest.SerializeToString,
                 response_deserializer=new__client__service__pb2.NewClientResponse.FromString,
                 _registered_method=True)
         self.HealthCheck = channel.unary_unary(
-                '/new_client.ClientNotificationService/HealthCheck',
+                '/newClient.ClientNotificationService/HealthCheck',
                 request_serializer=new__client__service__pb2.HealthCheckRequest.SerializeToString,
                 response_deserializer=new__client__service__pb2.HealthCheckResponse.FromString,
                 _registered_method=True)
 
 
 class ClientNotificationServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """Client Notification service definition
+    """
 
     def NotifyNewClient(self, request, context):
         """Notify the service about a new authenticated client that needs data streaming
@@ -78,14 +80,15 @@ def add_ClientNotificationServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'new_client.ClientNotificationService', rpc_method_handlers)
+            'newClient.ClientNotificationService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('new_client.ClientNotificationService', rpc_method_handlers)
+    server.add_registered_method_handlers('newClient.ClientNotificationService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
 class ClientNotificationService(object):
-    """Missing associated documentation comment in .proto file."""
+    """Client Notification service definition
+    """
 
     @staticmethod
     def NotifyNewClient(request,
@@ -101,7 +104,7 @@ class ClientNotificationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/new_client.ClientNotificationService/NotifyNewClient',
+            '/newClient.ClientNotificationService/NotifyNewClient',
             new__client__service__pb2.NewClientRequest.SerializeToString,
             new__client__service__pb2.NewClientResponse.FromString,
             options,
@@ -128,7 +131,7 @@ class ClientNotificationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/new_client.ClientNotificationService/HealthCheck',
+            '/newClient.ClientNotificationService/HealthCheck',
             new__client__service__pb2.HealthCheckRequest.SerializeToString,
             new__client__service__pb2.HealthCheckResponse.FromString,
             options,

@@ -3,15 +3,11 @@ import sys
 import logging
 from core.client_manager import ClientManager
 from gRPC.server import GrpcServer
-from config.settings import settings
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-
-
+from src.lib.config import initialize_config
+from lib.logger import initialize_logging
+from lib.config import config_params
+ 
+# TODO: Revisar este signal handler
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     logging.info("Received shutdown signal, cleaning up...")
@@ -25,12 +21,13 @@ def signal_handler(signum, frame):
 def main():
     """Main entry point for the calibration service."""
     try:
+        initialize_logging(config_params["logging_level"])
         # Initialize client manager
         client_manager = ClientManager()
         signal_handler.client_manager = client_manager
 
         # Initialize and start gRPC server
-        grpc_server = GrpcServer(client_manager, port=settings.GRPC_PORT)
+        grpc_server = GrpcServer(client_manager, port=config_params["grpc_port"])
         signal_handler.grpc_server = grpc_server
 
         # Set up signal handlers for graceful shutdown
@@ -41,7 +38,7 @@ def main():
         grpc_server.start()
 
         logging.info("Calibration service started successfully")
-        logging.info(f"gRPC server listening on port {settings.GRPC_PORT}")
+        logging.info(f"gRPC server listening on port {config_params['grpc_port']}")
         logging.info("Ready to accept client registrations")
 
         # Wait for the server to terminate

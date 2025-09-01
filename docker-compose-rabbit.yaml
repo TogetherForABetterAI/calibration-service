@@ -3,8 +3,8 @@ services:
     container_name: rabbitmq
     image: "rabbitmq:4.0-management"
     ports:
-      - "15672:15672"
-      - "5672:5672"
+      - ${RABBITMQ_UI_PORT}:${RABBITMQ_UI_PORT}
+      - ${RABBITMQ_PORT}:${RABBITMQ_PORT}
     networks:
       - tpp-network
     volumes:
