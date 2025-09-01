@@ -7,17 +7,17 @@ class Middleware:
     def __init__(self, channel):
         self._channel = channel
         self._channel.confirm_delivery()
-        self._channel.basic_qos(prefetch_count=1)  # Fair load distribution
+        self._channel.basic_qos(prefetch_count=1)  
 
 
     def callback_wrapper(self, callback_function):
         def wrapper(ch, method, properties, body):
-            # try:
-            callback_function(ch, method, properties, body)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            # except Exception as e:
-            #     logging.error(f"action: rabbitmq_callback | result: fail | error: {e}")
-            #     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            try:
+                callback_function(ch, method, properties, body)
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception as e:
+                logging.error(f"action: rabbitmq_callback | result: fail | error: {e}")
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
         return wrapper
 
@@ -47,11 +47,11 @@ class Middleware:
         This method only consumes from existing queues, it does not declare them.
         """
         logging.info(f"Setting up consumer for queue: {queue_name}")
-        # Use auto_ack=False for manual acknowledgment
+
         self._channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
-            auto_ack=False,  # Manual acknowledgment
+            auto_ack=False,  
         )
         logging.info(f"Consumer setup completed for queue: {queue_name}")
 
@@ -62,9 +62,6 @@ class Middleware:
         except KeyboardInterrupt:
             logging.info("Received interrupt signal, stopping consumption")
             self.close()
-        # except Exception as e:
-        #     logging.error(f"Error during consumption: {e}")
-        #     self.close()
 
     def close(self):
         try:
