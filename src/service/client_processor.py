@@ -38,26 +38,26 @@ class ClientProcessor:
         """Start processing messages from both calibration and inter-connection queues."""
         logging.info(f"Starting processing for client {self.client_id}")
 
-        # try:
-        self.middleware.basic_consume(
-            queue_name=self.inputs_queue_calibration,
-            callback_function=self._handle_data_message,
-        )
-        self.middleware.basic_consume(
-            queue_name=self.outputs_queue_calibration,
-            callback_function=self._handle_probability_message,
-        )
+        try:
+            self.middleware.basic_consume(
+                queue_name=self.inputs_queue_calibration,
+                callback_function=self._handle_data_message,
+            )
+            self.middleware.basic_consume(
+                queue_name=self.outputs_queue_calibration,
+                callback_function=self._handle_probability_message,
+            )
 
-        logging.info(f"Starting message consumption for client {self.client_id}")
-        self.middleware.start()
+            logging.info(f"Starting message consumption for client {self.client_id}")
+            self.middleware.start()
 
-        # except Exception as e:
-        #     logging.error(
-        #         f"Error in client {self.client_id}: {e}"
-        #     )
-        # finally:
-        self._running = False
-        logging.info(f"Processing stopped for client {self.client_id}")
+        except Exception as e:
+            logging.error(
+                f"Error in client {self.client_id}: {e}"
+            )
+        finally:
+            self._running = False
+            logging.info(f"Processing stopped for client {self.client_id}")
 
     def stop_processing(self):
         """Stop processing and clean up resources."""
@@ -68,32 +68,32 @@ class ClientProcessor:
 
     def _handle_data_message(self, ch, method, properties, body):
         """Handle data messages from the inter-connection queue."""
-        # try:
-        message = dataset_pb2.DataBatch()
-        message.ParseFromString(body)
-        logging.info(
-            f"action: receive_data_batch | result: success | eof {message.is_last_batch}"
-        )
- 
-        images = self._process_input_data(message.data)
+        try:
+            message = dataset_pb2.DataBatch()
+            message.ParseFromString(body)
+            logging.info(
+                f"action: receive_data_batch | result: success | eof {message.is_last_batch}"
+            )
+    
+            images = self._process_input_data(message.data)
 
-        self.store_input_data(message.batch_index, images, message.is_last_batch, list(message.labels))
+            self.store_input_data(message.batch_index, images, message.is_last_batch, list(message.labels))
 
-        if self._eof:
-            #TODO: Get y_pred & y_test from calibration
-            y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
-            y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
-            self._report_builder.build_report(y_test, y_pred)
-            logging.info(f"action:   | result: success")
-            self.stop_processing()
-            # self._report_builder.send_report()
-            logging.info(f"action: send_report | result: success")
-                
-        # except Exception as e:
-        #     logging.error(
-        #         f"Error handling data message for client {self.client_id}: {e}"
-        #     )
-        #     raise e 
+            if self._eof:
+                #TODO: Get y_pred & y_test from calibration
+                y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
+                y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
+                self._report_builder.build_report(y_test, y_pred)
+                logging.info(f"action:   | result: success")
+                self.stop_processing()
+                # self._report_builder.send_report()
+                logging.info(f"action: send_report | result: success")
+                    
+        except Exception as e:
+            logging.error(
+                f"Error handling data message for client {self.client_id}: {e}"
+            )
+            raise e 
 
     def _process_input_data(self, data):
         image_shape = (1, 28, 28)
@@ -110,33 +110,33 @@ class ClientProcessor:
     def _handle_probability_message(self, ch, method, properties, body):
         """Handle probability messages from the calibration queue."""
 
-        logging.info(f"MSG LEN: {len(body)}")
-        message = calibration_pb2.Predictions()
-        message.ParseFromString(body)
+        try:
+            message = calibration_pb2.Predictions()
+            message.ParseFromString(body)
 
-        logging.info(
-            f"action: receive_predictions | result: success | eof {message.eof}"
-        )
+            logging.info(
+                f"action: receive_predictions | result: success | eof {message.eof}"
+            )
 
-        probs = [list(p.values) for p in message.pred]
-        
-        probs_array = np.array(probs, dtype=np.float32)
-        self.store_outputs(message.batch_index, probs_array, message.eof)
-        if self._eof:
-            #TODO: Get y_pred & y_test from calibration
-            y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
-            y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
-            self._report_builder.build_report(y_test, y_pred)
-            logging.info(f"action: build_report | result: success")
-            self.stop_processing()
-            # self._report_builder.send_report()
-            logging.info(f"action: send_report | result: success")
+            probs = [list(p.values) for p in message.pred]
+            
+            probs_array = np.array(probs, dtype=np.float32)
+            self.store_outputs(message.batch_index, probs_array, message.eof)
+            if self._eof:
+                #TODO: Get y_pred & y_test from calibration
+                y_pred = [probs for batch in self._batches.values() for probs in batch[DataType.PROBS]]
+                y_test = [labels for batch in self._batches.values() for labels in batch[DataType.LABELS]]
+                self._report_builder.build_report(y_test, y_pred)
+                logging.info(f"action: build_report | result: success")
+                self.stop_processing()
+                # self._report_builder.send_report()
+                logging.info(f"action: send_report | result: success")
 
-        # except Exception as e:
-        #     logging.error(
-        #         f"Error handling probability message for client {self.client_id}: {e}"
-        #     )
-        #     raise e
+        except Exception as e:
+            logging.error(
+                f"Error handling probability message for client {self.client_id}: {e}"
+            )
+            raise e
 
     def store_outputs(self, batch_index: int, probs: np.ndarray, is_last_batch: bool):
         self._store_data(batch_index, DataType.PROBS, probs, is_last_batch)
