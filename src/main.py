@@ -22,6 +22,7 @@ def main():
     """Main entry point for the calibration service."""
     try:
         initialize_logging(config_params["logging_level"])
+
         # Initialize client manager
         client_manager = ClientManager()
         signal_handler.client_manager = client_manager

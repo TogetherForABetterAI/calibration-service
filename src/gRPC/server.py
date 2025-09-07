@@ -14,9 +14,10 @@ class ClientNotificationServiceServicer(
         logging.info("ClientNotificationServiceServicer initialized")
 
     def NotifyNewClient(self, request, context):
+        
         client_id = request.client_id
-        outputs_queue_calibration = request.outputs_queue_calibration
-        inputs_queue_calibration = request.inputs_queue_calibration
+        outputs_queue_calibration = f"outputs_queue_calibration_client_{client_id}"
+        inputs_queue_calibration = f"inputs_queue_calibration_client_{client_id}"
 
         logging.info(
             f"Received NotifyNewClient request for client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
