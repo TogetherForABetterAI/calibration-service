@@ -2,9 +2,8 @@ import logging
 from typing import Dict, Optional
 
 from mlflow import MlflowClient
-from middleware.middleware import Middleware
+from middleware.middleware import Middleware, middleware_connect
 from service.client_processor import ClientProcessor
-from src.lib.rabbitmq_conn import connect_to_rabbitmq
 from multiprocessing import Process, Lock
 
 class ClientManager:
@@ -15,60 +14,51 @@ class ClientManager:
         self._rabbitmq_channels = {}
 
     def register_client(
-        self, client_id: str, outputs_queue_calibration: str, inputs_queue_calibration: str
-    ):
+        self, client_id
+    ) :
         """
         Args:
             client_id: Unique identifier for the client
             outputs_queue_calibration: Queue name for calibration messages
             inputs_queue_calibration: Queue name for inter-connection messages
-
-        Returns:
-            bool: True if client was successfully registered, False otherwise
         """
         client = MlflowClient()
-
+        Middleware.create_exchange("calibration_exchange")
 
         with self._lock:
             if client_id in self._clients:
-                logging.warning(f"Client {client_id} is already registered")
-                return False
+                raise Exception(f"Client {client_id} is already registered")
 
             try:
-                conn = connect_to_rabbitmq()
+                conn = middleware_connect()
             except Exception as e:
                 logging.error(f"Failed to connect to RabbitMQ: {e}")
                 raise e
-
+            
             channel = conn.channel()
             self._rabbitmq_channels[client_id] = channel
 
             try:
                 client_processor = ClientProcessor(
-                    client_id=client_id,
-                        outputs_queue_calibration=outputs_queue_calibration,
-                        inputs_queue_calibration=inputs_queue_calibration,
-                        middleware=Middleware(channel),
-                        mlflow_client=client
-                    )
+                client_id=client_id,
+                middleware=Middleware(channel=channel),
+                mlflow_client=client
+                )
             except Exception as e:
-                logging.error(f"Failed to register client {client_id}: {e}")
+                logging.error(f"Failed to initialize ClientProcessor for client {client_id}: {e}")
                 raise e
             
             process = Process(
                 target=client_processor.start_processing,
-                    name=f"client-{client_id}",
-                    daemon=True,
-                )
+                name=f"client-{client_id}",
+                daemon=True,
+            )
 
             self._clients[client_id] = client_processor
             self._clients_processes[client_id] = process
             process.start()
 
-            logging.info(
-                f"Successfully registered client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
-            )
-
+            #TODO: Borrar colas del cliente y channel al finalizar la evaluacion metrologica
 
 
 
