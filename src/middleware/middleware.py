@@ -81,3 +81,29 @@ class Middleware:
             return self._connection and not self._connection.is_closed
         except:
             return False
+        
+    def set_client_config(self, client_id: str):
+        inputs_queue_calibration = f"inputs_queue_calibration_client_{client_id}"
+        outputs_queue_calibration = f"outputs_queue_calibration_client_{client_id}"
+        
+        self.channel.exchange_declare(
+            exchange="calibration_exchange",
+            exchange_type="direct",
+            durable=True
+        )
+        self.channel.queue_declare(queue=outputs_queue_calibration, durable=True)
+        self.channel.queue_declare(queue=inputs_queue_calibration, durable=True)
+        self.channel.queue_bind(
+            exchange="calibration_exchange",
+            queue=outputs_queue_calibration,
+            routing_key=f"{client_id}"
+        )
+        self.channel.queue_bind(
+            exchange="calibration_exchange",
+            queue=inputs_queue_calibration,
+            routing_key=f"{client_id}.labeled"
+        )
+            
+    
+def middleware_connect():
+    return pika.BlockingConnection(pika.ConnectionParameters(config_params["rabbitmq_host"], config_params["rabbitmq_port"]))
