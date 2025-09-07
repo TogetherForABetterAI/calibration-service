@@ -12,15 +12,12 @@ class ClientProcessor:
     def __init__(
         self,
         client_id: str,
-        outputs_queue_calibration: str,
-        inputs_queue_calibration: str,
         middleware: Middleware,
         mlflow_client: MlflowClient
     ):
         self.client_id = client_id
-        self.outputs_queue_calibration = outputs_queue_calibration
-        self.inputs_queue_calibration = inputs_queue_calibration
         self.middleware = middleware
+        self.middleware.set_client_config(client_id)
 
         self._report_builder = ReportBuilder(client_id=client_id)
         self._eof = False
