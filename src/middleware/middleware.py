@@ -43,7 +43,7 @@ class Middleware:
         """
         Start consuming from a queue.
 
-        Note: Queues must be pre-declared by the authenticator service.
+        Note: Queues must be pre-declared by the users service.
         This method only consumes from existing queues, it does not declare them.
         """
         logging.info(f"Setting up consumer for queue: {queue_name}")
