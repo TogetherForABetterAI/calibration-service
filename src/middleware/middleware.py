@@ -7,8 +7,7 @@ class Middleware:
     def __init__(self, channel):
         self._channel = channel
         self._channel.confirm_delivery()
-        self._channel.basic_qos(prefetch_count=1)  
-
+        self._channel.basic_qos(prefetch_count=1)
 
     def callback_wrapper(self, callback_function):
         def wrapper(ch, method, properties, body):
@@ -51,7 +50,7 @@ class Middleware:
         self._channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
-            auto_ack=False,  
+            auto_ack=False,
         )
         logging.info(f"Consumer setup completed for queue: {queue_name}")
 
@@ -81,29 +80,31 @@ class Middleware:
             return self._connection and not self._connection.is_closed
         except:
             return False
-        
+
     def set_client_config(self, client_id: str):
         inputs_queue_calibration = f"inputs_queue_calibration_client_{client_id}"
         outputs_queue_calibration = f"outputs_queue_calibration_client_{client_id}"
-        
-        self.channel.exchange_declare(
-            exchange="calibration_exchange",
-            exchange_type="direct",
-            durable=True
+
+        self._channel.exchange_declare(
+            exchange="calibration_exchange", exchange_type="direct", durable=True
         )
-        self.channel.queue_declare(queue=outputs_queue_calibration, durable=True)
-        self.channel.queue_declare(queue=inputs_queue_calibration, durable=True)
-        self.channel.queue_bind(
+        self._channel.queue_declare(queue=outputs_queue_calibration, durable=True)
+        self._channel.queue_declare(queue=inputs_queue_calibration, durable=True)
+        self._channel.queue_bind(
             exchange="calibration_exchange",
             queue=outputs_queue_calibration,
-            routing_key=f"{client_id}"
+            routing_key=f"{client_id}",
         )
-        self.channel.queue_bind(
+        self._channel.queue_bind(
             exchange="calibration_exchange",
             queue=inputs_queue_calibration,
-            routing_key=f"{client_id}.labeled"
+            routing_key=f"{client_id}.labeled",
         )
-            
-    
+
+
 def middleware_connect():
-    return pika.BlockingConnection(pika.ConnectionParameters(config_params["rabbitmq_host"], config_params["rabbitmq_port"]))
+    return pika.BlockingConnection(
+        pika.ConnectionParameters(
+            config_params["rabbitmq_host"], config_params["rabbitmq_port"]
+        )
+    )
