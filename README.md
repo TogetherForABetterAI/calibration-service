@@ -87,7 +87,7 @@ ARTIFACTS_PATH=artifacts
 
 ### RabbitMQ Requirements
 
-- **Queues must be pre-declared** by the authenticator service
+- **Queues must be pre-declared** by the users service
 - **Service does NOT declare queues**, only consumes from them
 - Uses `auto_ack=False` and `prefetch_count=1` for reliable delivery
 - Manual acknowledgment after successful processing

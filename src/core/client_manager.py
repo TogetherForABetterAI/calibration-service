@@ -6,6 +6,7 @@ from middleware.middleware import Middleware, middleware_connect
 from service.client_processor import ClientProcessor
 from multiprocessing import Process, Lock
 
+
 class ClientManager:
     def __init__(self):
         self._clients: Dict[str, ClientProcessor] = {}
@@ -14,8 +15,11 @@ class ClientManager:
         self._rabbitmq_channels = {}
 
     def register_client(
-        self, client_id
-    ) :
+        self,
+        client_id: str,
+        outputs_queue_calibration: str,
+        inputs_queue_calibration: str,
+    ):
         """
         Args:
             client_id: Unique identifier for the client
@@ -23,7 +27,6 @@ class ClientManager:
             inputs_queue_calibration: Queue name for inter-connection messages
         """
         client = MlflowClient()
-        Middleware.create_exchange("calibration_exchange")
 
         with self._lock:
             if client_id in self._clients:
@@ -34,20 +37,24 @@ class ClientManager:
             except Exception as e:
                 logging.error(f"Failed to connect to RabbitMQ: {e}")
                 raise e
-            
+
             channel = conn.channel()
             self._rabbitmq_channels[client_id] = channel
 
             try:
                 client_processor = ClientProcessor(
-                client_id=client_id,
-                middleware=Middleware(channel=channel),
-                mlflow_client=client
+                    client_id=client_id,
+                    middleware=Middleware(channel=channel),
+                    mlflow_client=client,
+                    outputs_queue_calibration=outputs_queue_calibration,
+                    inputs_queue_calibration=inputs_queue_calibration,
                 )
             except Exception as e:
-                logging.error(f"Failed to initialize ClientProcessor for client {client_id}: {e}")
+                logging.error(
+                    f"Failed to initialize ClientProcessor for client {client_id}: {e}"
+                )
                 raise e
-            
+
             process = Process(
                 target=client_processor.start_processing,
                 name=f"client-{client_id}",
@@ -58,9 +65,7 @@ class ClientManager:
             self._clients_processes[client_id] = process
             process.start()
 
-            #TODO: Borrar colas del cliente y channel al finalizar la evaluacion metrologica
-
-
+            # TODO: Borrar colas del cliente y channel al finalizar la evaluacion metrologica
 
     def unregister_client(self, client_id: str) -> bool:
         """

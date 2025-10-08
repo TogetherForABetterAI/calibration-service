@@ -14,7 +14,7 @@ class ClientNotificationServiceServicer(
         logging.info("ClientNotificationServiceServicer initialized")
 
     def NotifyNewClient(self, request, context):
-        
+
         client_id = request.client_id
         outputs_queue_calibration = f"outputs_queue_calibration_client_{client_id}"
         inputs_queue_calibration = f"inputs_queue_calibration_client_{client_id}"
@@ -23,22 +23,26 @@ class ClientNotificationServiceServicer(
             f"Received NotifyNewClient request for client {client_id} with queues: calibration={outputs_queue_calibration}, inter_connection={inputs_queue_calibration}"
         )
 
-        if not client_id or not outputs_queue_calibration or not inputs_queue_calibration:
+        if (
+            not client_id
+            or not outputs_queue_calibration
+            or not inputs_queue_calibration
+        ):
             error_msg = "Missing required parameters: client_id, outputs_queue_calibration, or inputs_queue_calibration"
             logging.error(error_msg)
             return new_client_service_pb2.NewClientResponse(
                 status="ERROR", message=error_msg
             )
-            
-        try: 
+
+        try:
             self.client_manager.register_client(
                 client_id=client_id,
                 outputs_queue_calibration=outputs_queue_calibration,
                 inputs_queue_calibration=inputs_queue_calibration,
             )
         except Exception as e:
-            error_msg = f"Failed to register client {client_id}"
-            logging.error(error_msg)
+            error_msg = f"Failed to register client {client_id}: {str(e)}"
+            logging.error(error_msg, exc_info=True)
             return new_client_service_pb2.NewClientResponse(
                 status="ERROR", message=error_msg
             )
@@ -48,8 +52,6 @@ class ClientNotificationServiceServicer(
         return new_client_service_pb2.NewClientResponse(
             status="OK", message=success_msg
         )
-               
-    
 
     def HealthCheck(self, request, context):
         try:

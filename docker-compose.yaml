@@ -1,5 +1,5 @@
 services:
-  calibration:
+  calibration-service:
     build: .
     env_file: .env
     ports:
