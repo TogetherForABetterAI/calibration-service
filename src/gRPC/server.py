@@ -2,7 +2,10 @@ import grpc
 import logging
 from concurrent import futures
 from core.client_manager import ClientManager
-from src.pb import new_client_service_pb2, new_client_service_pb2_grpc
+from src.pb.new_client_service import (
+    new_client_service_pb2,
+    new_client_service_pb2_grpc,
+)
 
 
 class ClientNotificationServiceServicer(
