@@ -5,7 +5,7 @@ protobuf
 numpy
 boto3
 pandas
-grpcio
-grpcio-tools
+grpcio>=1.75.1
+grpcio-tools>=1.75.1
 reportlab
 seaborn

@@ -1,5 +1,6 @@
 services:
   calibration-service:
+    container_name: calibration-service
     build: .
     env_file: .env
     ports:
