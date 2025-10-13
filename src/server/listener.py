@@ -1,11 +1,12 @@
 import logging
 import threading
 from threading import Thread
-from typing import Dict
+from typing import Dict, Tuple
 from multiprocessing import Queue
 from lib.constants import CONNECTION_QUEUE_NAME, CONNECTION_EXCHANGE
 from server.client_manager import ClientManager
 from server.shutdown_monitor import ShutdownMonitor
+import json
 
 
 class Listener(Thread):
@@ -19,15 +20,20 @@ class Listener(Thread):
         # Queue to receive shutdown signal
         self.shutdown_queue = Queue()
 
+        # Queue to receive removal requests from child processes
+        self.remove_client_queue = Queue()
+
         # Track active client manager processes
-        self._active_clients: Dict[str, tuple] = (
-            {}
-        )  # client_id -> (ClientManager, shutdown_queue)
+        self._active_clients: Dict[str, Tuple[ClientManager, Queue]] = {}
+        # client_id -> (ClientManager, shutdown_queue)
         self._clients_lock = threading.Lock()
 
         # Shutdown monitor thread
         self.shutdown_monitor = None
         self.shutdown_initiated = False
+
+        # Removal monitor thread
+        self.remove_client_monitor = None
 
         self.logger.info(f"Listener initialized for queue: {self.queue_name}")
 
@@ -36,8 +42,7 @@ class Listener(Thread):
         self.logger.info("Shutdown callback invoked, initiating graceful shutdown...")
         self.shutdown_initiated = True
 
-        self.middleware.shutdown()
-        self._shutdown_all_clients()
+        self.middleware.stop_consuming()
 
     def _shutdown_all_clients(self):
         """Shutdown all active client manager processes by enqueuing None in their shutdown_queue."""
@@ -60,17 +65,35 @@ class Listener(Thread):
                     self.logger.error(
                         f"Error shutting down ClientManager {client_id}: {e}"
                     )
+            else:
+                self.logger.info(f"ClientManager {client_id} already stopped")
 
     def _wait_for_shutdown(self):
         """Wait for shutdown signal and then shutdown all clients"""
         if self.shutdown_monitor:
             self.shutdown_monitor.join()  # Wait for shutdown monitor to finish
 
+    def _monitor_removals(self):
+        """Monitor the removal queue and remove finished clients from _active_clients"""
+        while not self.shutdown_initiated:
+            try:
+                client_id = self.remove_client_queue.get(
+                    block=True
+                )  # Block until a message is available
+                if client_id is None:
+                    break  # We send None to stop the thread
+                self._remove_handler(client_id)
+            except:
+                continue
+
     def run(self):
         """Main listener loop with graceful shutdown support"""
-        self.logger.info(
-            f"Started consuming client notifications from queue: {self.queue_name}"
+
+        # Thread to remove clients from _active_clients
+        self.remove_client_monitor = threading.Thread(
+            target=self._monitor_removals, daemon=False
         )
+        self.remove_client_monitor.start()
 
         # Start shutdown monitoring thread with callback
         self.shutdown_monitor = ShutdownMonitor(
@@ -88,7 +111,10 @@ class Listener(Thread):
             if not self.shutdown_initiated:
                 self.logger.error(f"Error in listener loop: {e}")
         finally:
-            self._wait_for_shutdown()
+            self.remove_client_queue.put(None)  # Signal to stop
+            self.remove_client_monitor.join()  # Wait to finish
+            self._shutdown_all_clients()
+            self.middleware.close()  # Close middleware connection
             self.logger.info("Listener shutdown completed")
 
     def _handle_message(self, ch, method, properties, body):
@@ -96,46 +122,35 @@ class Listener(Thread):
         try:
             self.logger.info("Received new client connection notification")
 
-            # Only ack/nack if channel is open
-            def safe_ack():
-                if hasattr(ch, "is_open") and ch.is_open:
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
-                else:
-                    self.logger.warning(
-                        "Channel already closed, cannot ack notification message."
-                    )
-
-            def safe_nack():
-                if hasattr(ch, "is_open") and ch.is_open:
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-                else:
-                    self.logger.warning(
-                        "Channel already closed, cannot nack notification message."
-                    )
-
             if self.shutdown_initiated:
+                raise Exception("Shutdown in progress")  # Requeue the message
+
+            # Parse client_id from message before creating process
+
+            notification = json.loads(body.decode("utf-8"))
+            client_id = notification.get("client_id")
+            if not client_id:
                 self.logger.info(
-                    "Shutdown already initiated, ignoring new client notification"
+                    f"Client notification missing client_id: {notification}"
                 )
-                safe_nack()
-                return
+                return  # Ack the message to remove it from the queue
 
             # Create a shutdown queue for this client manager
             client_shutdown_queue = Queue()
 
             # ClientManager will create its own RabbitMQ connection
             client_manager = ClientManager(
+                client_id=client_id,
                 message_data=(properties, body),
                 middleware_config=self.middleware.config,
                 shutdown_queue=client_shutdown_queue,
-                remove_handler_callback=self._remove_handler,
-                add_client_callback=self._add_client,
+                remove_client_queue=self.remove_client_queue,
             )
 
-            client_manager.start()
+            # Add to active clients BEFORE starting the process
+            self._add_client(client_id, (client_manager, client_shutdown_queue))
 
-            # ACK the notification message only if channel is open
-            safe_ack()
+            client_manager.start()
 
             # Double-check for shutdown signal after starting the client manager
             if self.shutdown_initiated:
@@ -144,7 +159,7 @@ class Listener(Thread):
                 return
         except Exception as e:
             self.logger.error(f"Error handling new client message: {e}")
-            safe_nack()
+            raise e  # Requeue the message
 
     def _remove_handler(self, client_id: str):
         """Remove a finished client manager from the active clients dict"""
@@ -153,9 +168,9 @@ class Listener(Thread):
                 del self._active_clients[client_id]
                 self.logger.info(f"Removed ClientManager for client {client_id}")
 
-    def _add_client(self, client_id: str, handler: ClientManager):
+    def _add_client(self, client_id: str, client_tuple: Tuple[ClientManager, Queue]):
         """Add a new client manager to the active clients dict"""
         with self._clients_lock:
             if client_id not in self._active_clients:
-                self._active_clients[client_id] = handler
+                self._active_clients[client_id] = client_tuple
                 self.logger.info(f"Added ClientManager for client {client_id}")

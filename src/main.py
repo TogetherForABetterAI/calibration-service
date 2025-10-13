@@ -1,3 +1,4 @@
+import os
 import signal
 import sys
 import logging
@@ -38,7 +39,6 @@ def start_service_with_graceful_shutdown(server, config):
     logging.info("Waiting for server thread to finish...")
     server.join()
     logging.info("Service exited gracefully")
-    logging.shutdown()
 
 
 def main():
@@ -46,6 +46,7 @@ def main():
     setup_logging(config)
     server = Server(config)
     start_service_with_graceful_shutdown(server, config)
+    os._exit(0)
 
 
 if __name__ == "__main__":

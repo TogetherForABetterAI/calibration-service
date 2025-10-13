@@ -104,11 +104,26 @@ class Consumer(threading.Thread):
             )
 
             self.logger.info(f"Starting consumption for client {self.client_id}")
-            self.channel.start_consuming()
+            self.channel.start_consuming()  # This will block until stop_consuming() is called
         except Exception as e:
             self.logger.error(
                 f"Error in Consumer thread for client {self.client_id}: {e}"
             )
+        finally:
+            # Always close resources and log exit, even on error
+            try:
+                if self.channel and self.channel.is_open:
+                    self.channel.close()
+            except Exception as e:
+                self.logger.debug(f"Error closing channel: {e}")
+
+            try:
+                if self.connection and self.connection.is_open:
+                    self.connection.close()
+            except Exception as e:
+                self.logger.debug(f"Error closing connection: {e}")
+
+            self.logger.info(f"Consumer thread exiting for client {self.client_id}")
 
     def _labeled_callback(self, ch, method, properties, body):
         """Wrapper callback for labeled queue messages."""
@@ -165,7 +180,9 @@ class Consumer(threading.Thread):
         try:
             if self.channel and self.channel.is_open:
                 self.channel.stop_consuming()
-                self.logger.info(f"Stopped consuming messages for client {self.client_id}")
+                self.logger.info(
+                    f"Stopped consuming messages for client {self.client_id}"
+                )
         except Exception as e:
             self.logger.error(
                 f"action: rabbitmq_stop_consuming | result: fail | error: {e}"

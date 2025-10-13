@@ -88,17 +88,11 @@ class Middleware:
             self.logger.info("Received interrupt signal, stopping consumption")
             self.close()
 
-    def shutdown(self):
-        """Stop consuming messages from RabbitMQ and close the connection."""
-        try:
-            if self.channel and self.channel.is_open:
-                self.channel.stop_consuming()
-                self.logger.info("Stopped consuming messages")
-            if self.conn and self.conn.is_open:
-                self.conn.close()
-                self.logger.info("RabbitMQ connection closed")
-        except Exception as e:
-            self.logger.error(f"action: rabbitmq_shutdown | result: fail | error: {e}")
+    def stop_consuming(self):
+        if self.channel and self.channel.is_open:
+            self.channel.stop_consuming()
+            self.logger.info("Stopped consuming messages")
+
 
     def close(self):
         try:
