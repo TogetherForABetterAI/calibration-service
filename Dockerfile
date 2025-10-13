@@ -8,6 +8,9 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy New Relic configuration
+COPY newrelic.ini .
+
 # Copy the source code
 COPY src/ /app/src/
 
