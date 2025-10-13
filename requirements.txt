@@ -9,3 +9,4 @@ grpcio>=1.75.1
 grpcio-tools>=1.75.1
 reportlab
 seaborn
+newrelic
