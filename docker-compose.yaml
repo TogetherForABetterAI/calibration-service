@@ -3,6 +3,10 @@ services:
     container_name: calibration-service
     build: .
     env_file: .env
+    environment:
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_APP_NAME=calibration-service
+      - NEW_RELIC_CONFIG_FILE=/app/newrelic.ini
     ports:
       - "50052:50052"
     volumes:
