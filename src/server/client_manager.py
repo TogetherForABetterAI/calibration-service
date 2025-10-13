@@ -81,7 +81,6 @@ class ClientManager(Process):
                 return
             self._setup_consumer()
 
-            self.logger.info("ANASHE")
             # If shutdown was received is not necessary to remove the handler
             if self._remove_handler_callback and not self.shutdown_initiated:
                 self._remove_handler_callback(self.client_id)
@@ -136,6 +135,7 @@ class ClientManager(Process):
         )
         self.consumer.start()
         self.consumer.join()  # Wait for consumer to finish
+        self.consumer.shutdown() # Once joined, ensure shutdown
 
     # Define callbacks that call BatchHandler methods
     def _handle_labeled_message(self, ch, method, properties, body):
@@ -152,4 +152,4 @@ class ClientManager(Process):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
         self.logger.info(f"Received EOF message for client {self.client_id}")
         self.batch_handler.stop_processing()
-        self.consumer.shutdown()
+        self.consumer.stop_consuming()

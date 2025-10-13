@@ -149,7 +149,6 @@ class Consumer(threading.Thread):
     def shutdown(self):
         try:
             if self.channel and self.channel.is_open:
-                self.channel.stop_consuming()
                 self.channel.close()
             if self.connection and self.connection.is_open:
                 self.connection.close()
@@ -159,4 +158,15 @@ class Consumer(threading.Thread):
         except Exception as e:
             self.logger.error(
                 f"Error stopping consumer for client {self.client_id}: {e}"
+            )
+
+    def stop_consuming(self):
+        """Stop consuming messages from RabbitMQ."""
+        try:
+            if self.channel and self.channel.is_open:
+                self.channel.stop_consuming()
+                self.logger.info(f"Stopped consuming messages for client {self.client_id}")
+        except Exception as e:
+            self.logger.error(
+                f"action: rabbitmq_stop_consuming | result: fail | error: {e}"
             )
