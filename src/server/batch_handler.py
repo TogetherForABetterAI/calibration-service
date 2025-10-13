@@ -32,7 +32,6 @@ class BatchHandler:
             )
             return
 
-        logging.info(f"Initialized ClientProcessor for client {client_id}")
 
     def stop_processing(self):
         """Stop processing and clean up resources."""
