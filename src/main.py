@@ -1,3 +1,9 @@
+import os
+import newrelic.agent
+
+config_file = os.environ.get('NEW_RELIC_CONFIG_FILE', 'newrelic.ini')
+newrelic.agent.initialize(config_file)
+
 import signal
 import sys
 import logging
