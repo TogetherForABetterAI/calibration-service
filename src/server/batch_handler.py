@@ -39,6 +39,19 @@ class BatchHandler:
 
         self._mlflow_logger.end_run()
 
+    def _send_report(self):
+        """Build and send report when both labeled and replies data are complete."""
+        y_pred = []
+        y_test = []
+        for batch in self._batches.values():
+            if batch[DataType.PROBS] is not None and batch[DataType.LABELS] is not None:
+                y_pred.extend(batch[DataType.PROBS])
+                y_test.extend(batch[DataType.LABELS])
+        self._report_builder.build_report(y_test, y_pred)
+        logging.info(f"action: build_report | result: success")
+        # self._report_builder.send_report()
+        logging.info(f"action: send_report | result: success")
+
     def _handle_data_message(self, body):
         """Handle data messages from the inter-connection queue."""
         try:
@@ -57,27 +70,11 @@ class BatchHandler:
             if message.is_last_batch:
                 self._labeled_eof = True
 
-            # if self._labeled_eof and self._replies_eof:
-            #     y_pred = [
-            #         probs
-            #         for batch in self._batches.values()
-            #         if batch[DataType.PROBS] is not None
-            #         for probs in batch[DataType.PROBS]
-            #     ]
-            #     y_test = [
-            #         labels
-            #         for batch in self._batches.values()
-            #         if batch[DataType.LABELS] is not None
-            #         for labels in batch[DataType.LABELS]
-            #     ]
-            #     self._report_builder.build_report(y_test, y_pred)
-            #     logging.info(f"action: build_report | result: success")
-            #     # self._report_builder.send_report()
-            #     logging.info(f"action: send_report | result: success")
-            
+            if self._labeled_eof and self._replies_eof:
+                self._send_report()
+
             if self._on_eof and self._labeled_eof and self._replies_eof:
-                logging.info("Calling on_eof callback")
-                self._on_eof()
+                self._on_eof()  # Received both EOFs, time to finish consuming
         except Exception as e:
             logging.error(
                 f"Error handling data message for client {self.client_id}: {e}"
@@ -114,27 +111,12 @@ class BatchHandler:
             if message.eof:
                 self._replies_eof = True
 
-            # if self._labeled_eof and self._replies_eof:
-            #     y_pred = [
-            #         probs
-            #         for batch in self._batches.values()
-            #         if batch[DataType.PROBS] is not None
-            #         for probs in batch[DataType.PROBS]
-            #     ]
-            #     y_test = [
-            #         labels
-            #         for batch in self._batches.values()
-            #         if batch[DataType.LABELS] is not None
-            #         for labels in batch[DataType.LABELS]
-            #     ]
-            #     self._report_builder.build_report(y_test, y_pred)
-            #     logging.info(f"action: build_report | result: success")
-            #     # self._report_builder.send_report()
-            #     logging.info(f"action: send_report | result: success")
+            if self._labeled_eof and self._replies_eof:
+                self._send_report()
 
             if self._on_eof and self._labeled_eof and self._replies_eof:
-                logging.info("Calling on_eof callback")
-                self._on_eof()
+                self._on_eof()  # Received both EOFs, time to finish consuming
+
         except Exception as e:
             logging.error(
                 f"Error handling probability message for client {self.client_id}: {e}"
