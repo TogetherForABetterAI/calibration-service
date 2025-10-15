@@ -56,9 +56,7 @@ class BatchHandler:
         try:
             message = dataset_pb2.DataBatch()
             message.ParseFromString(body)
-            logging.info(
-                f"action: receive_data_batch | result: success | eof {message.is_last_batch}"
-            )
+    
 
             images = self._process_input_data(message.data)
 

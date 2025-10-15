@@ -1,13 +1,14 @@
 import logging
 import threading
+import time
 from lib.constants import DATASET_EXCHANGE, REPLIES_EXCHANGE
-import pika
+from middleware.middleware import Middleware
 
 
-class Consumer(threading.Thread):
+class Consumer:
     """
     Consumer handles consuming from multiple queues using a shared connection
-    but with its own dedicated channel. Now runs as a Thread.
+    but with its own dedicated channel.
     """
 
     def __init__(
@@ -18,172 +19,142 @@ class Consumer(threading.Thread):
         replies_callback=None,
         logger=None,
     ):
-        super().__init__(name=f"Consumer-{client_id}", daemon=False)
-        self.middleware_config = middleware_config
+        self.middleware = Middleware(middleware_config)  # create new connection
         self.client_id = client_id
-        self.connection = None  # Will be created in run()
-        self.channel = None  # Will be created in run()
         self.logger = logger or logging.getLogger(f"consumer-{client_id}")
         self.labeled_queue_name = f"{client_id}_labeled_queue"
         self.replies_queue_name = f"{client_id}_replies_queue"
         self.routing_key_labeled = f"{client_id}.labeled"
-        self.routing_key_replies = client_id
+        self.routing_key_replies = f"{client_id}"
+        self.acknowledged = False
+        self.labeled_exchange = DATASET_EXCHANGE
+        self.replies_exchange = REPLIES_EXCHANGE
         self.labeled_callback = labeled_callback  # Callback for labeled queue
         self.replies_callback = replies_callback  # Callback for replies queue
+        self.channel = None
+        self.shutdown_initiated = False
+        self._stop_consuming_called = False
+        self.shutdown_lock = threading.Lock()
 
-    def run(self):
+    def start(self):
         """Declare/bind queues, start consuming, and ACK the original message."""
         self.logger.info(f"Consumer thread started for client {self.client_id}")
-
         try:
-            # Create a new connection for this thread
-            self.logger.info(
-                f"[STEP] Creating RabbitMQ connection for client {self.client_id}"
-            )
-            params = {
-                "host": self.middleware_config.host,
-                "port": self.middleware_config.port,
-                "heartbeat": getattr(self.middleware_config, "heartbeat", 5000),
-            }
-            if hasattr(self.middleware_config, "username") and hasattr(
-                self.middleware_config, "password"
-            ):
-                params["credentials"] = pika.PlainCredentials(
-                    self.middleware_config.username, self.middleware_config.password
-                )
-            self.connection = pika.BlockingConnection(
-                pika.ConnectionParameters(**params)
-            )
-            self.channel = self.connection.channel()
-            self.channel.basic_qos(prefetch_count=1)
 
-            # Declare and bind queues
-            self.logger.info(f"[STEP] Declaring exchange for client {self.client_id}")
-            self.channel.exchange_declare(
-                exchange=REPLIES_EXCHANGE, exchange_type="direct", durable=False
+            self.channel = self.middleware.create_channel(prefetch_count=1)
+
+            # Declare and bind labeled queue to DATASET_EXCHANGE
+            self.middleware.declare_exchange(
+                self.channel,
+                self.labeled_exchange,
+                exchange_type="direct",
+                durable=False,
             )
 
-            self.channel.exchange_declare(
-                exchange=DATASET_EXCHANGE, exchange_type="direct", durable=False
+            self.middleware.declare_queue(
+                self.channel, self.labeled_queue_name, durable=False
             )
 
-            self.logger.info(
-                f"[STEP] Declaring and binding queues for client {self.client_id}"
-            )
-            self.channel.queue_declare(queue=self.labeled_queue_name, durable=False)
-
-            self.channel.queue_bind(
-                queue=self.labeled_queue_name,
-                exchange=DATASET_EXCHANGE,
-                routing_key=self.routing_key_labeled,
+            self.middleware.bind_queue(
+                self.channel,
+                self.labeled_queue_name,
+                self.labeled_exchange,
+                self.routing_key_labeled,
             )
 
-            self.channel.queue_declare(queue=self.replies_queue_name, durable=False)
-
-            self.channel.queue_bind(
-                queue=self.replies_queue_name,
-                exchange=REPLIES_EXCHANGE,
-                routing_key=self.routing_key_replies,
+            # Declare and bind replies queue to REPLIES_EXCHANGE
+            self.middleware.declare_exchange(
+                self.channel,
+                self.replies_exchange,
+                exchange_type="direct",
+                durable=False,
             )
 
-            self.logger.info(
-                f"[STEP] Queues declared and bound for client {self.client_id}"
+            self.middleware.declare_queue(
+                self.channel, self.replies_queue_name, durable=False
             )
 
-            # Start consuming from both queues
-            self.channel.basic_consume(
-                queue=self.labeled_queue_name,
-                on_message_callback=self._labeled_callback,
-                auto_ack=False,
+            self.middleware.bind_queue(
+                self.channel,
+                self.replies_queue_name,
+                self.replies_exchange,
+                self.routing_key_replies,
             )
 
-            self.channel.basic_consume(
-                queue=self.replies_queue_name,
-                on_message_callback=self._replies_callback,
-                auto_ack=False,
+            self.middleware.basic_consume(
+                self.channel, self.labeled_queue_name, self._labeled_callback
             )
 
-            self.logger.info(f"Starting consumption for client {self.client_id}")
-            self.channel.start_consuming()  # This will block until stop_consuming() is called
+            self.middleware.basic_consume(
+                self.channel, self.replies_queue_name, self._replies_callback
+            )
+
+            threading.Thread(target=self._check_flag).start()  # express thread
+
+            self.middleware.start_consuming(self.channel)
         except Exception as e:
             self.logger.error(
                 f"Error in Consumer thread for client {self.client_id}: {e}"
             )
         finally:
-            # Always close resources and log exit, even on error
-            try:
-                if self.channel and self.channel.is_open:
-                    self.channel.close()
-            except Exception as e:
-                self.logger.debug(f"Error closing channel: {e}")
-
-            try:
-                if self.connection and self.connection.is_open:
-                    self.connection.close()
-            except Exception as e:
-                self.logger.debug(f"Error closing connection: {e}")
-
-            self.logger.info(f"Consumer thread exiting for client {self.client_id}")
+            if self.channel and self.channel.is_open:
+                self.middleware.close_channel(self.channel)
+                self.middleware.close_connection()
+                self.logger.info(
+                    f"Channel and connection closed for client {self.client_id}"
+                )
 
     def _labeled_callback(self, ch, method, properties, body):
         """Wrapper callback for labeled queue messages."""
+        # Note: ACK/NACK is handled by middleware's callback_wrapper
         try:
             if self.labeled_callback:
                 self.labeled_callback(ch, method, properties, body)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            self.logger.debug(
-                f"ACK labeled message with delivery_tag={method.delivery_tag}"
-            )
         except Exception as e:
             self.logger.error(
                 f"Error in labeled callback for client {self.client_id}: {e}"
             )
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-            self.logger.warning(
-                f"NACK labeled message with delivery_tag={method.delivery_tag}, requeuing"
-            )
+            raise
 
     def _replies_callback(self, ch, method, properties, body):
         """Wrapper callback for replies queue messages."""
+        # Note: ACK/NACK is handled by middleware's callback_wrapper
         try:
             if self.replies_callback:
                 self.replies_callback(ch, method, properties, body)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            self.logger.debug(
-                f"ACK replies message with delivery_tag={method.delivery_tag}"
-            )
         except Exception as e:
             self.logger.error(
                 f"Error in replies callback for client {self.client_id}: {e}"
             )
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-            self.logger.warning(
-                f"NACK replies message with delivery_tag={method.delivery_tag}, requeuing"
-            )
+            raise
 
-    def shutdown(self):
+    def stop_consuming(self):
         try:
             if self.channel and self.channel.is_open:
-                self.channel.close()
-            if self.connection and self.connection.is_open:
-                self.connection.close()
-            self.logger.info(
-                f"Consumer stopped and channel closed for client {self.client_id}"
-            )
+                self.middleware.stop_consuming(self.channel)
+                self.logger.info(
+                    f"Consumer stopped and channel closed for client {self.client_id}"
+                )
+
         except Exception as e:
             self.logger.error(
                 f"Error stopping consumer for client {self.client_id}: {e}"
             )
 
-    def stop_consuming(self):
-        """Stop consuming messages from RabbitMQ."""
-        try:
-            if self.channel and self.channel.is_open:
-                self.channel.stop_consuming()
-                self.logger.info(
-                    f"Stopped consuming messages for client {self.client_id}"
-                )
-        except Exception as e:
-            self.logger.error(
-                f"action: rabbitmq_stop_consuming | result: fail | error: {e}"
-            )
+    # In case "stop_consuming" is called before "start_consuming"
+    # (due to shutdown signal), we check the flag after "start_consuming" is called.
+    # This way we ensure that if shutdown was initiated while "start_consuming"
+    # was being called, we still stop consuming.
+    # If we don't do this, the process will never exit
+    # because "start_consuming" is blocking.
+    # So after "start_consuming" is called, we wait and check the flag.
+    def _check_flag(self):
+        time.sleep(2)
+        with self.shutdown_lock:
+            shutdown = self.shutdown_initiated
+        if shutdown:
+            self.stop_consuming()
+
+    def set_shutdown(self):
+        with self.shutdown_lock:
+            self.shutdown_initiated = True

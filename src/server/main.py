@@ -20,10 +20,11 @@ class Server(Thread):
         # Establish RabbitMQ connection and middleware
         self.logger.info("Connecting to RabbitMQ...")
         self.middleware = Middleware(self.config.middleware_config)
-
+        channel = self.middleware.create_channel(prefetch_count=1)
+        self.middleware.setup_connection_queue(channel, durable=False)
         # Initialize listener
         self.logger.info("Initializing Listener...")
-        self.listener = Listener(middleware=self.middleware)
+        self.listener = Listener(middleware=self.middleware, channel=channel)
 
         self.logger.info(
             f"Server initialized - ready to consume from {self.config.middleware_config.host}"
@@ -31,14 +32,11 @@ class Server(Thread):
 
     def run(self):
         """
-        Start consuming client notification messages from the existing queue.
-        This method runs in a separate thread when start() is called.
+        Start the Listener class to begin consuming client notifications.
         """
         self.logger.info("Starting listener for client notifications...")
         try:
             self.listener.start()
-            self.logger.info("Listener started successfully")
-            self.listener.join()
         except Exception as e:
             self.logger.error(f"Failed to start listener: {e}")
             raise e
@@ -49,15 +47,7 @@ class Server(Thread):
         """
         self.logger.info("Initiating graceful server shutdown")
         try:
-            # Signal shutdown to the listener via its queue
-            if self.listener:
-                self.logger.info("Sending shutdown signal to listener...")
-                self.listener.shutdown_queue.put(None)
-
-                # Wait for listener thread to finish
-                self.logger.info("Waiting for listener to finish...")
-                self.listener.join()
-
+            self.listener.stop_consuming()
             self.logger.info("Server shutdown completed")
         except Exception as e:
             self.logger.error(f"Error during server shutdown: {e}")

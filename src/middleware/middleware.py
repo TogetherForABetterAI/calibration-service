@@ -1,6 +1,8 @@
 import pika
 import logging
 
+from src.lib.constants import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
+
 
 class Middleware:
     def __init__(self, config):
@@ -13,9 +15,6 @@ class Middleware:
                     host=config.host, port=config.port, heartbeat=5000
                 )
             )
-            self.channel = self.conn.channel()
-            self.channel.confirm_delivery()
-            self.channel.basic_qos(prefetch_count=1)
             self.logger.info(
                 f"Connected to RabbitMQ at {config.host}:{config.port} as {config.username}"
             )
@@ -23,19 +22,48 @@ class Middleware:
             self.logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise e
 
-    def declare_queue(self, queue_name: str, durable: bool = False):
+    def setup_connection_queue(self, channel, durable=False):
+        queue_name = CONNECTION_QUEUE_NAME
+        exchange_name = CONNECTION_EXCHANGE
+        
+        # Declare the exchange (fanout type for broadcasting)
+        self.declare_exchange(
+            channel, exchange_name, exchange_type="fanout", durable=durable
+        )
+
+        # Declare the queue
+        self.declare_queue(channel, queue_name, durable=durable)
+
+        # Bind the queue to the exchange
+        self.bind_queue(channel, queue_name, exchange_name, routing_key="")
+
+        self.logger.info(
+            f"Queue '{queue_name}' created and bound to exchange '{exchange_name}'"
+        )
+
+    def create_channel(self, prefetch_count=1):
+        """Create and return a new channel from the shared connection, with optional prefetch_count."""
+        channel = self.conn.channel()
+        channel.basic_qos(prefetch_count=prefetch_count)
+        return channel
+
+    def declare_queue(self, channel, queue_name: str, durable: bool = False):
         try:
-            self.channel.queue_declare(queue=queue_name, durable=durable)
+            channel.queue_declare(queue=queue_name, durable=durable)
             self.logger.info(f"Queue '{queue_name}' declared successfully")
         except Exception as e:
             self.logger.error(f"Failed to declare queue '{queue_name}': {e}")
             raise e
 
     def declare_exchange(
-        self, exchange_name: str, exchange_type: str = "direct", durable: bool = False
+        self,
+        channel,
+        exchange_name: str,
+        exchange_type: str = "direct",
+        durable: bool = False,
     ):
         try:
-            self.channel.exchange_declare(
+            channel.exchange_declare(
                 exchange=exchange_name, exchange_type=exchange_type, durable=durable
             )
             self.logger.info(f"Exchange '{exchange_name}' declared successfully")
@@ -43,9 +71,11 @@ class Middleware:
             self.logger.error(f"Failed to declare exchange '{exchange_name}': {e}")
             raise e
 
-    def bind_queue(self, queue_name: str, exchange_name: str, routing_key: str):
+    def bind_queue(
+        self, channel, queue_name: str, exchange_name: str, routing_key: str
+    ):
         try:
-            self.channel.queue_bind(
+            channel.queue_bind(
                 exchange=exchange_name, queue=queue_name, routing_key=routing_key
             )
             self.logger.info(
@@ -59,9 +89,9 @@ class Middleware:
             )
             raise e
 
-    def basic_consume(self, queue_name: str, callback_function):
+    def basic_consume(self, channel, queue_name: str, callback_function):
         self.logger.info(f"Setting up consumer for queue: {queue_name}")
-        self.channel.basic_consume(
+        channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
@@ -80,24 +110,30 @@ class Middleware:
 
         return wrapper
 
-    def start_consuming(self):
+    def start_consuming(self, channel):
         try:
             self.logger.info("Starting RabbitMQ consumption...")
-            self.channel.start_consuming()
+            channel.start_consuming()
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal, stopping consumption")
             self.close()
 
-    def stop_consuming(self):
-        if self.channel and self.channel.is_open:
-            self.channel.stop_consuming()
+    def stop_consuming(self, channel):
+        if channel and channel.is_open:
+            channel.stop_consuming()
             self.logger.info("Stopped consuming messages")
 
-
-    def close(self):
+    def close_channel(self, channel):
         try:
-            if hasattr(self, "channel") and self.channel and self.channel.is_open:
-                self.channel.close()
+            if hasattr(self, "channel") and channel and channel.is_open:
+                channel.close()
+        except Exception as e:
+            self.logger.error(
+                f"action: rabbitmq_connection_close | result: fail | error: {e}"
+            )
+
+    def close_connection(self):
+        try:
             if hasattr(self, "conn") and self.conn and self.conn.is_open:
                 self.conn.close()
             self.logger.info("RabbitMQ connection closed")
