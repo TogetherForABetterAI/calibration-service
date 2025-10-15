@@ -3,7 +3,7 @@ import threading
 from threading import Thread
 from middleware.middleware import Middleware
 from server.listener import Listener
-from lib.constants import DATASET_EXCHANGE
+from lib.config import DATASET_EXCHANGE
 
 
 class Server(Thread):

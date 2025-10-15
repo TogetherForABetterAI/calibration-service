@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Dict
 from multiprocessing import Queue
-from lib.constants import CONNECTION_QUEUE_NAME, CONNECTION_EXCHANGE
+from lib.config import CONNECTION_QUEUE_NAME, CONNECTION_EXCHANGE
 from server.client_manager import ClientManager
 import json
 

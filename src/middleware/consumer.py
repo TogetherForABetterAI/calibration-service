@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from lib.constants import DATASET_EXCHANGE, REPLIES_EXCHANGE
+from lib.config import DATASET_EXCHANGE, REPLIES_EXCHANGE
 from middleware.middleware import Middleware
 
 

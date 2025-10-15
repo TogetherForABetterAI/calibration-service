@@ -1,7 +1,7 @@
 import pika
 import logging
 
-from src.lib.constants import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
+from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
 
 
 class Middleware:
@@ -25,7 +25,7 @@ class Middleware:
     def setup_connection_queue(self, channel, durable=False):
         queue_name = CONNECTION_QUEUE_NAME
         exchange_name = CONNECTION_EXCHANGE
-        
+
         # Declare the exchange (fanout type for broadcasting)
         self.declare_exchange(
             channel, exchange_name, exchange_type="fanout", durable=durable
