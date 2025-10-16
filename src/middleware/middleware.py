@@ -112,11 +112,11 @@ class Middleware:
 
     def start_consuming(self, channel):
         try:
-            self.logger.info("Starting RabbitMQ consumption...")
-            channel.start_consuming()
+            if channel and channel.is_open:
+                self.logger.info("Starting to consume messages")
+                channel.start_consuming()
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal, stopping consumption")
-            self.close()
 
     def stop_consuming(self, channel):
         if channel and channel.is_open:
@@ -125,8 +125,9 @@ class Middleware:
 
     def close_channel(self, channel):
         try:
-            if hasattr(self, "channel") and channel and channel.is_open:
+            if channel and channel.is_open:
                 channel.close()
+                self.logger.info("RabbitMQ channel closed")
         except Exception as e:
             self.logger.error(
                 f"action: rabbitmq_connection_close | result: fail | error: {e}"
@@ -134,9 +135,9 @@ class Middleware:
 
     def close_connection(self):
         try:
-            if hasattr(self, "conn") and self.conn and self.conn.is_open:
+            if self.conn and self.conn.is_open:
                 self.conn.close()
-            self.logger.info("RabbitMQ connection closed")
+                self.logger.info("RabbitMQ connection closed")
         except Exception as e:
             self.logger.error(
                 f"action: rabbitmq_connection_close | result: fail | error: {e}"
