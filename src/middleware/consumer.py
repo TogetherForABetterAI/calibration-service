@@ -83,7 +83,7 @@ class Consumer:
                 f"Error stopping consumer for client {self.client_id}: {e}"
             )
 
-    def set_shutdown_initiated(self):
+    def set_shutdown(self):
         self._shutdown_initiated = True
 
     def shutdown(self):
