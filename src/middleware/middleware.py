@@ -116,7 +116,7 @@ class Middleware:
                 self.logger.info("Starting to consume messages")
                 channel.start_consuming()
         except KeyboardInterrupt:
-            self.logger.info("Received interrupt signal, stopping consumption")
+            self.logger.error("Received interrupt signal, stopping consumption")
 
     def stop_consuming(self, channel):
         if channel and channel.is_open:
