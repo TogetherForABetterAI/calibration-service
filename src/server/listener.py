@@ -9,7 +9,6 @@ import json
 
 class Listener:
     def __init__(self, middleware, channel, logger=None):
-        super().__init__()  # Initialize Thread base class
         self.middleware = middleware
         self.middleware_config = (
             middleware.config
