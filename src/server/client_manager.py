@@ -4,6 +4,7 @@ import signal
 from mlflow import MlflowClient
 from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
+from src.middleware.middleware import Middleware
 
 
 class ClientManager(Process):
@@ -24,6 +25,7 @@ class ClientManager(Process):
         super().__init__()
         self.client_id = client_id
         self.middleware_config = middleware_config
+        self.middleware = Middleware(middleware_config)  # create new connection
         self.remove_client_queue = remove_client_queue
         self.consumer = None
         self.batch_handler = None
@@ -50,6 +52,7 @@ class ClientManager(Process):
         signal.signal(signal.SIGTERM, handle_sigterm)
 
         try:
+
             # Setup BatchHandler
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
@@ -58,14 +61,15 @@ class ClientManager(Process):
             )
 
             self.consumer = Consumer(
-                middleware_config=self.middleware_config,
+                middleware=self.middleware,
                 client_id=self.client_id,
                 labeled_callback=self._handle_labeled_message,
                 replies_callback=self._handle_replies_message,
                 logger=self.logger,
             )
 
-            self.consumer.start()  # This will block until stop_consuming() is called
+            if not self.shutdown_initiated:
+                self.consumer.start()  # This will block until stop_consuming() is called
 
             # Notify parent that this client has finished
             if self.remove_client_queue and not self.shutdown_initiated:
