@@ -1,33 +1,26 @@
 import logging
-from typing import Dict, List
+from typing import Dict
 from mlflow import MlflowClient
 import numpy as np
 from proto import calibration_pb2, dataset_pb2
 from service.mlflow_logger import MlflowLogger
-from middleware.middleware import Middleware
 from service.report_builder import ReportBuilder
 from lib.data_types import DataType
 
 
-class ClientProcessor:
+class BatchHandler:
     def __init__(
         self,
         client_id: str,
-        middleware: Middleware,
         mlflow_client: MlflowClient,
-        outputs_queue_calibration: str,
-        inputs_queue_calibration: str,
+        on_eof=None,
     ):
         self.client_id = client_id
-        self.middleware = middleware
-        self.middleware.set_client_config(client_id)
-
-        self.outputs_queue_calibration = outputs_queue_calibration
-        self.inputs_queue_calibration = inputs_queue_calibration
-
         self._report_builder = ReportBuilder(client_id=client_id)
-        self._eof = False
+        self._labeled_eof = False
+        self._replies_eof = False
         self._batches: Dict[int, Dict] = {}
+        self._on_eof = on_eof
 
         try:
             self._mlflow_logger = MlflowLogger(
@@ -39,44 +32,31 @@ class ClientProcessor:
             )
             return
 
-        logging.info(f"Initialized ClientProcessor for client {client_id}")
-
-    def start_processing(self):
-        """Start processing messages from both calibration and inter-connection queues."""
-        logging.info(f"Starting processing for client {self.client_id}")
-
-        try:
-            self.middleware.basic_consume(
-                queue_name=self.inputs_queue_calibration,
-                callback_function=self._handle_data_message,
-            )
-            self.middleware.basic_consume(
-                queue_name=self.outputs_queue_calibration,
-                callback_function=self._handle_probability_message,
-            )
-
-            logging.info(f"Starting message consumption for client {self.client_id}")
-            self.middleware.start()
-
-        except Exception as e:
-            logging.error(f"Error in client {self.client_id}: {e}")
-        finally:
-            self._running = False
-            logging.info(f"Processing stopped for client {self.client_id}")
 
     def stop_processing(self):
         """Stop processing and clean up resources."""
 
         self._mlflow_logger.end_run()
 
-    def _handle_data_message(self, ch, method, properties, body):
+    def _send_report(self):
+        """Build and send report when both labeled and replies data are complete."""
+        y_pred = []
+        y_test = []
+        for batch in self._batches.values():
+            if batch[DataType.PROBS] is not None and batch[DataType.LABELS] is not None:
+                y_pred.extend(batch[DataType.PROBS])
+                y_test.extend(batch[DataType.LABELS])
+        self._report_builder.build_report(y_test, y_pred)
+        logging.info(f"action: build_report | result: success")
+        # self._report_builder.send_report()
+        logging.info(f"action: send_report | result: success")
+
+    def _handle_data_message(self, body):
         """Handle data messages from the inter-connection queue."""
         try:
             message = dataset_pb2.DataBatch()
             message.ParseFromString(body)
-            logging.info(
-                f"action: receive_data_batch | result: success | eof {message.is_last_batch}"
-            )
+    
 
             images = self._process_input_data(message.data)
 
@@ -84,24 +64,14 @@ class ClientProcessor:
                 message.batch_index, images, message.is_last_batch, list(message.labels)
             )
 
-            if self._eof:
-                # TODO: Get y_pred & y_test from calibration
-                y_pred = [
-                    probs
-                    for batch in self._batches.values()
-                    for probs in batch[DataType.PROBS]
-                ]
-                y_test = [
-                    labels
-                    for batch in self._batches.values()
-                    for labels in batch[DataType.LABELS]
-                ]
-                self._report_builder.build_report(y_test, y_pred)
-                logging.info(f"action:   | result: success")
-                self.stop_processing()
-                # self._report_builder.send_report()
-                logging.info(f"action: send_report | result: success")
+            if message.is_last_batch:
+                self._labeled_eof = True
 
+            if self._labeled_eof and self._replies_eof:
+                self._send_report()
+
+            if self._on_eof and self._labeled_eof and self._replies_eof:
+                self._on_eof()  # Received both EOFs, time to finish consuming
         except Exception as e:
             logging.error(
                 f"Error handling data message for client {self.client_id}: {e}"
@@ -120,7 +90,7 @@ class ClientProcessor:
 
         return images.reshape((num_images, *image_shape))
 
-    def _handle_probability_message(self, ch, method, properties, body):
+    def _handle_probability_message(self, body):
         """Handle probability messages from the calibration queue."""
 
         try:
@@ -135,23 +105,14 @@ class ClientProcessor:
 
             probs_array = np.array(probs, dtype=np.float32)
             self.store_outputs(message.batch_index, probs_array, message.eof)
-            if self._eof:
-                # TODO: Get y_pred & y_test from calibration
-                y_pred = [
-                    probs
-                    for batch in self._batches.values()
-                    for probs in batch[DataType.PROBS]
-                ]
-                y_test = [
-                    labels
-                    for batch in self._batches.values()
-                    for labels in batch[DataType.LABELS]
-                ]
-                self._report_builder.build_report(y_test, y_pred)
-                logging.info(f"action: build_report | result: success")
-                self.stop_processing()
-                # self._report_builder.send_report()
-                logging.info(f"action: send_report | result: success")
+            if message.eof:
+                self._replies_eof = True
+
+            if self._labeled_eof and self._replies_eof:
+                self._send_report()
+
+            if self._on_eof and self._labeled_eof and self._replies_eof:
+                self._on_eof()  # Received both EOFs, time to finish consuming
 
         except Exception as e:
             logging.error(
@@ -197,6 +158,3 @@ class ClientProcessor:
                 entry[DataType.LABELS],
             )
             # del self._batches[batch_index] # Lo comento por ahora, porque uso estos datos para armar el reporte (provisoriamente hasta tener acceso al paquete UQM), pero es correcto que se borren.
-
-            if eof:
-                self._eof = True
