@@ -48,29 +48,19 @@ class Consumer:
         """Wrapper callback for labeled queue messages."""
         if self._shutdown_initiated:
             self.middleware.stop_consuming(self.channel)
-        # Note: ACK/NACK is handled by middleware's callback_wrapper
-        try:
-            if self.labeled_callback:
-                self.labeled_callback(ch, method, properties, body)
-        except Exception as e:
-            self.logger.error(
-                f"Error in labeled callback for client {self.client_id}: {e}"
-            )
-            raise
+            # Note: ACK/NACK is handled by middleware's callback_wrapper
+
+        if self.labeled_callback:
+            self.labeled_callback(ch, method, properties, body)
 
     def _replies_callback(self, ch, method, properties, body):
         """Wrapper callback for replies queue messages."""
         if self._shutdown_initiated:
             self.middleware.stop_consuming(self.channel)
         # Note: ACK/NACK is handled by middleware's callback_wrapper
-        try:
-            if self.replies_callback:
-                self.replies_callback(ch, method, properties, body)
-        except Exception as e:
-            self.logger.error(
-                f"Error in replies callback for client {self.client_id}: {e}"
-            )
-            raise
+
+        if self.replies_callback:
+            self.replies_callback(ch, method, properties, body)
 
     def stop_consuming(self):
         try:
