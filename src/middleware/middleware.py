@@ -1,7 +1,7 @@
 import pika
 import logging
 
-from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
+from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
 
 
 class Middleware:
@@ -24,21 +24,25 @@ class Middleware:
 
     def setup_connection_queue(self, channel, durable=False):
         queue_name = CONNECTION_QUEUE_NAME
-        exchange_name = CONNECTION_EXCHANGE
+        connection_exchange = CONNECTION_EXCHANGE
+        coordinator_exchange = COORDINATOR_EXCHANGE # Provisorio. Hasta que este el microservicio y hagamos la creacion desde ahi.
 
         # Declare the exchange (fanout type for broadcasting)
         self.declare_exchange(
-            channel, exchange_name, exchange_type="fanout", durable=durable
+            channel, connection_exchange, exchange_type="fanout", durable=durable
+        )
+        self.declare_exchange(
+            channel, coordinator_exchange, exchange_type="fanout", durable=durable
         )
 
         # Declare the queue
         self.declare_queue(channel, queue_name, durable=durable)
 
         # Bind the queue to the exchange
-        self.bind_queue(channel, queue_name, exchange_name, routing_key="")
+        self.bind_queue(channel, queue_name, connection_exchange, routing_key="")
 
         self.logger.info(
-            f"Queue '{queue_name}' created and bound to exchange '{exchange_name}'"
+            f"Queue '{queue_name}' created and bound to exchange '{connection_exchange}'"
         )
 
     def create_channel(self, prefetch_count=1):
@@ -89,14 +93,36 @@ class Middleware:
             )
             raise e
 
-    def basic_consume(self, channel, queue_name: str, callback_function):
+    def basic_consume(self, channel, queue_name: str, callback_function) -> str:
         self.logger.info(f"Setting up consumer for queue: {queue_name}")
-        channel.basic_consume(
+        return channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
         )
 
+    def basic_send(
+        self, 
+        channel,
+        exchange_name: str,
+        routing_key: str,
+        message_body: str,
+        properties: pika.BasicProperties = None,
+    ):
+        try:
+            channel.basic_publish(
+                exchange=exchange_name,
+                routing_key=routing_key,
+                body=message_body,
+                properties=properties,
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to send message to exchange '{exchange_name}' "
+                f"with routing key '{routing_key}': {e}"
+            )
+            raise e 
+        
     def callback_wrapper(self, callback_function):
         def wrapper(ch, method, properties, body):
             try:
@@ -118,6 +144,15 @@ class Middleware:
         except KeyboardInterrupt:
             self.logger.error("Received interrupt signal, stopping consumption")
 
+    def unsuscribe_from_queue(self, channel, consumer_tag):
+        try:
+            channel.basic_cancel(consumer_tag=consumer_tag)
+        except Exception as e:
+            self.logger.error(
+                f"action: rabbitmq_unsuscribe | result: fail | error: {e}"
+            )
+        
+            
     def stop_consuming(self, channel):
         if channel and channel.is_open:
             channel.stop_consuming()

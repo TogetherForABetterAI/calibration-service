@@ -2,24 +2,26 @@ import logging
 import threading
 from typing import Dict
 from multiprocessing import Queue
-from lib.config import CONNECTION_QUEUE_NAME, CONNECTION_EXCHANGE
+from lib.config import CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
 from server.client_manager import ClientManager
 import json
 
 
 class Listener:
-    def __init__(self, middleware, channel, logger=None):
+    def __init__(self, middleware, channel, max_clients, replica_id, logger=None):
         self.middleware = middleware
         self.middleware_config = (
             middleware.config
         )  # Store config to pass to child processes
         self.logger = logger or logging.getLogger("listener")
-        self.queue_name = CONNECTION_QUEUE_NAME
-        self.connection_exchange = CONNECTION_EXCHANGE
+        self.max_clients = max_clients
         self.channel = channel
+        self.consumer_tag = None
+        self.replica_id = replica_id
 
         # Queue to receive removal requests from child processes
         self.remove_client_queue = Queue()
+        self.clients_removed_queue = Queue()
 
         # Track active client manager processes
         self._active_clients: Dict[str, ClientManager] = {}
@@ -31,7 +33,7 @@ class Listener:
         # Removal monitor thread
         self.remove_client_monitor = None
 
-        self.logger.info(f"Listener initialized for queue: {self.queue_name}")
+        self.logger.info(f"Listener initialized for queue: {CONNECTION_QUEUE_NAME}")
 
     def _shutdown_all_clients(self):
         """Terminate all active ClientManager processes."""
@@ -60,11 +62,35 @@ class Listener:
                     block=True
                 )  # Block until a message is available
                 if client_id is None:
+                    self.clients_removed_queue.put(None)
                     break  # We send None to stop the thread
                 self._remove_handler(client_id)
-            except:
+                self.clients_removed_queue.put(client_id)
+            except Exception as e:
+                self.logger.error(f"Error monitoring removals: {e}")
                 continue
 
+
+    def start_consumption(self):
+        active_clients_count = 0
+        with self._clients_lock:
+            active_clients_count = len(self._active_clients)
+
+        while active_clients_count < self.max_clients:
+            self.middleware.start_consuming(
+                self.channel
+            )
+            client_id = self.clients_removed_queue.get(
+                block=True
+            )
+            if client_id is None:
+                break 
+        
+            with self._clients_lock:
+                active_clients_count = len(self._active_clients)
+        
+
+    
     def start(self):
         """Main listener loop with graceful shutdown support"""
 
@@ -73,14 +99,13 @@ class Listener:
         self.remove_client_monitor.start()
 
         try:
-            self.middleware.basic_consume(
+            self.consumer_tag = self.middleware.basic_consume(
                 channel=self.channel,
-                queue_name=self.queue_name,
+                queue_name=CONNECTION_QUEUE_NAME,
                 callback_function=self._handle_new_client,
             )
-            self.middleware.start_consuming(
-                self.channel
-            )  # This will block until stop_consuming() is called
+            self.start_consumption()
+
         except Exception as e:
             with self.shutdown_lock:
                 if not self.shutdown_initiated:
@@ -117,6 +142,23 @@ class Listener:
 
             # Add to active clients before starting the process
             self._add_client(client_id, client_manager)
+
+            # Chequeo si se llego al maximo de clientes
+            active_clients_count = 0
+            with self._clients_lock:
+                active_clients_count = len(self._active_clients)
+
+            if active_clients_count >= self.max_clients:
+                self.middleware.unsuscribe_from_queue(self.channel, self.consumer_tag)
+                self.middleware.stop_consuming(self.channel)
+                data = { "replica_id": self.replica_id }
+                self.middleware.basic_send(
+                    self.channel,
+                    COORDINATOR_EXCHANGE,
+                    "coordinator-scale",
+                    json.dumps(data).encode("utf-8"),
+                )                
+                self.logger.info(f"Max clients reached ({self.max_clients}). Pausing consumption.")
 
             client_manager.start()
 

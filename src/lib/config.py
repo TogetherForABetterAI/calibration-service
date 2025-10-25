@@ -5,11 +5,14 @@ DATASET_EXCHANGE = "dataset_exchange"
 REPLIES_EXCHANGE = "replies_exchange"
 CONNECTION_EXCHANGE = "new_connections"
 CONNECTION_QUEUE_NAME = "calibration_service_connections_queue"
+COORDINATOR_EXCHANGE = "coordinator_exchange"
 
 class ServerConfig:
     def __init__(self):
         self.service_name = os.getenv("SERVICE_NAME", "calibration-service")
         self.container_name = os.getenv("CONTAINER_NAME", "")
+        self.max_clients = int(os.getenv("MAX_CLIENTS", "100"))
+        self.replica_id = int(os.getenv("REPLICA_ID", "1"))
 
 
 class MiddlewareConfig:

@@ -24,10 +24,12 @@ class Server(Thread):
         self.middleware.setup_connection_queue(channel, durable=False)
         # Initialize listener
         self.logger.info("Initializing Listener...")
-        self.listener = Listener(middleware=self.middleware, channel=channel)
-
-        self.logger.info(
-            f"Server initialized - ready to consume from {self.config.middleware_config.host}"
+        self.listener = Listener(
+            middleware=self.middleware,
+            channel=channel,
+            max_clients=self.config.server_config.max_clients,
+            replica_id=self.config.server_config.replica_id,
+            logger=self.logger
         )
 
     def run(self):
