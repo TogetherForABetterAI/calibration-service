@@ -11,8 +11,10 @@ class ServerConfig:
     def __init__(self):
         self.service_name = os.getenv("SERVICE_NAME", "calibration-service")
         self.container_name = os.getenv("CONTAINER_NAME", "")
-        self.max_clients = int(os.getenv("MAX_CLIENTS", "100"))
+        self.upper_bound_clients = int(os.getenv("UPPER_BOUND_CLIENTS", "10"))
+        self.lower_bound_clients = int(os.getenv("LOWER_BOUND_CLIENTS", "3"))
         self.replica_id = int(os.getenv("REPLICA_ID", "1"))
+        self.replica_timeout_seconds = int(os.getenv("REPLICA_TIMEOUT_SECONDS", "180"))
 
 
 class MiddlewareConfig:

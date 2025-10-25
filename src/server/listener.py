@@ -1,5 +1,6 @@
 import logging
 import threading
+from time import time
 from typing import Dict
 from multiprocessing import Queue
 from lib.config import CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
@@ -8,20 +9,24 @@ import json
 
 
 class Listener:
-    def __init__(self, middleware, channel, max_clients, replica_id, logger=None):
+    def __init__(self, middleware, channel, upper_bound_clients, lower_bound_clients, replica_id, replica_timeout_seconds, logger=None):
         self.middleware = middleware
         self.middleware_config = (
             middleware.config
         )  # Store config to pass to child processes
         self.logger = logger or logging.getLogger("listener")
-        self.max_clients = max_clients
+        self.upper_bound_clients = upper_bound_clients
+        self.lower_bound_clients = lower_bound_clients
         self.channel = channel
         self.consumer_tag = None
         self.replica_id = replica_id
+        self.lower_bound_reached = False
+        self.replica_timeout_seconds = replica_timeout_seconds
 
         # Queue to receive removal requests from child processes
         self.remove_client_queue = Queue()
         self.clients_removed_queue = Queue()
+        self.lower_bound_reached_queue = Queue()
 
         # Track active client manager processes
         self._active_clients: Dict[str, ClientManager] = {}
@@ -63,9 +68,11 @@ class Listener:
                 )  # Block until a message is available
                 if client_id is None:
                     self.clients_removed_queue.put(None)
+                    self.lower_bound_reached_queue.put(None)
                     break  # We send None to stop the thread
                 self._remove_handler(client_id)
                 self.clients_removed_queue.put(client_id)
+                self.lower_bound_reached_queue.put(client_id)
             except Exception as e:
                 self.logger.error(f"Error monitoring removals: {e}")
                 continue
@@ -76,7 +83,7 @@ class Listener:
         with self._clients_lock:
             active_clients_count = len(self._active_clients)
 
-        while active_clients_count < self.max_clients:
+        while active_clients_count > self.lower_bound_clients and active_clients_count < self.upper_bound_clients:
             self.middleware.start_consuming(
                 self.channel
             )
@@ -90,7 +97,31 @@ class Listener:
                 active_clients_count = len(self._active_clients)
         
 
-    
+    def lower_bound_checker(self):
+        """Check if the number of active clients has dropped below half the max_clients"""
+        while True:
+            try:
+                client_id = self.lower_bound_reached_queue.get(
+                    block=True
+                )  
+                if client_id is None:
+                    break  
+
+                time.sleep(self.replica_timeout_seconds)
+                
+                active_clients_count = 0
+                with self._clients_lock:
+                    active_clients_count = len(self._active_clients)
+
+                if active_clients_count <= self.lower_bound_clients:
+                    self.stop_consuming()
+                    self.clients_removed_queue.put(None)  # To unblock start_consumption
+                    break
+            
+            except Exception as e:
+                self.logger.error(f"Error in lower bound checker: {e}")
+                continue        
+
     def start(self):
         """Main listener loop with graceful shutdown support"""
 
@@ -98,6 +129,9 @@ class Listener:
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 
+        if self.replica_id != 1:
+            self.lower_bound_reached_thread = threading.Thread(target=self.lower_bound_checker)
+            self.lower_bound_reached_thread.start()
         try:
             self.consumer_tag = self.middleware.basic_consume(
                 channel=self.channel,
@@ -184,6 +218,9 @@ class Listener:
         """Gracefully shutdown listener and all resources."""
         self.remove_client_queue.put(None)  # Signal to stop
         self.remove_client_monitor.join()  # Wait to finish
+        if self.replica_id != 1:
+            self.lower_bound_reached_thread.join()
+
         self._shutdown_all_clients()
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()

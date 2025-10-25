@@ -27,8 +27,10 @@ class Server(Thread):
         self.listener = Listener(
             middleware=self.middleware,
             channel=channel,
-            max_clients=self.config.server_config.max_clients,
+            upper_bound_clients=self.config.server_config.upper_bound_clients,
+            lower_bound_clients=self.config.server_config.lower_bound_clients,
             replica_id=self.config.server_config.replica_id,
+            replica_timeout_seconds=self.config.server_config.replica_timeout_seconds,
             logger=self.logger
         )
 
