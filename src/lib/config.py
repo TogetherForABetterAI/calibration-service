@@ -19,6 +19,8 @@ def initialize_config():
     
     config_params["rabbitmq_host"] = os.getenv("RABBITMQ_HOST", "rabbitmq")
     config_params["rabbitmq_port"] = int(os.getenv("RABBITMQ_PORT", "5672"))
+    config_params["rabbitmq_user"] = os.getenv("RABBITMQ_USER", "guest")
+    config_params["rabbitmq_password"] = os.getenv("RABBITMQ_PASSWORD", "guest")
     
 
     return config_params

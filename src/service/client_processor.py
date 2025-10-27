@@ -2,6 +2,7 @@ import logging
 from typing import Dict, List
 from mlflow import MlflowClient
 import numpy as np
+import newrelic.agent
 from proto import calibration_pb2, dataset_pb2
 from service.mlflow_logger import MlflowLogger
 from middleware.middleware import Middleware
@@ -43,6 +44,18 @@ class ClientProcessor:
 
     def start_processing(self):
         """Start processing messages from both calibration and inter-connection queues."""
+        # Initialize New Relic in this child process
+        import os
+        try:
+            newrelic.agent.initialize(
+                os.environ.get('NEW_RELIC_CONFIG_FILE', 'newrelic.ini')
+            )
+            # Register this application explicitly
+            app = newrelic.agent.register_application(timeout=10.0)
+            logging.info(f"New Relic initialized in child process for client {self.client_id}")
+        except Exception as e:
+            logging.warning(f"Failed to initialize New Relic in child process: {e}")
+        
         logging.info(f"Starting processing for client {self.client_id}")
 
         try:
@@ -69,6 +82,7 @@ class ClientProcessor:
 
         self._mlflow_logger.end_run()
 
+    @newrelic.agent.background_task(name='rabbitmq.handle_data_message')
     def _handle_data_message(self, ch, method, properties, body):
         """Handle data messages from the inter-connection queue."""
         try:
@@ -120,6 +134,7 @@ class ClientProcessor:
 
         return images.reshape((num_images, *image_shape))
 
+    @newrelic.agent.background_task(name='rabbitmq.handle_probability_message')
     def _handle_probability_message(self, ch, method, properties, body):
         """Handle probability messages from the calibration queue."""
 

@@ -103,8 +103,14 @@ class Middleware:
 
 
 def middleware_connect():
+    credentials = pika.PlainCredentials(
+        config_params["rabbitmq_user"], 
+        config_params["rabbitmq_password"]
+    )
     return pika.BlockingConnection(
         pika.ConnectionParameters(
-            config_params["rabbitmq_host"], config_params["rabbitmq_port"]
+            host=config_params["rabbitmq_host"], 
+            port=config_params["rabbitmq_port"],
+            credentials=credentials
         )
     )
