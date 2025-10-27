@@ -31,6 +31,8 @@ class Server(Thread):
             lower_bound_clients=self.config.server_config.lower_bound_clients,
             replica_id=self.config.server_config.replica_id,
             replica_timeout_seconds=self.config.server_config.replica_timeout_seconds,
+            master_replica_id=self.config.server_config.master_replica_id,
+            initial_timeout=self.config.server_config.initial_timeout,
             logger=self.logger
         )
 
