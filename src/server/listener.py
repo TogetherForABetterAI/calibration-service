@@ -204,7 +204,7 @@ class Listener:
             if active_clients_count >= self.lower_bound_clients and not self.lower_bound_reached:
                 self.lower_bound_reached = True
                 
-            if active_clients_count >= self.max_clients:
+            if active_clients_count >= self.upper_bound_clients:
                 self.middleware.stop_consuming(self.channel)
                 self._notify_coordinator_scale()
 
