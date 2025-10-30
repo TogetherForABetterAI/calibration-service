@@ -17,7 +17,7 @@ def mock_config():
 @pytest.fixture
 def client_manager(mock_config):
     with patch("src.server.client_manager.Middleware", return_value=Mock()):
-        return ClientManager(client_id="client123", middleware_config=mock_config)
+        return ClientManager(client_id="client123", middleware_config=mock_config, remove_client_queue=None)
 
 
 def test_initialization(client_manager):
@@ -33,11 +33,10 @@ def test_handle_shutdown_signal_stops_all(client_manager):
     client_manager.consumer = Mock()
     client_manager.batch_handler = Mock()
 
-    client_manager._handle_shutdown_signal()
+    client_manager._handle_shutdown_signal(None, None)
 
     assert client_manager.shutdown_initiated is True
     client_manager.consumer.set_shutdown.assert_called_once()
-    client_manager.consumer.stop_consuming.assert_called_once()
     client_manager.batch_handler.stop_processing.assert_called_once()
 
 

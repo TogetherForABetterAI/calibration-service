@@ -12,7 +12,7 @@ class Server(Thread):
     """
 
     def __init__(self, config, middleware_cls):
-        super().__init__()  # Initialize Thread base class
+        threading.Thread.__init__(self)
         self.config = config
         self.logger = logging.getLogger("calibration-server")
         self.logger.info("Initializing Calibration Server")
@@ -47,6 +47,7 @@ class Server(Thread):
         """
         self.logger.info("Initiating graceful server shutdown")
         try:
+            print("Server run method called")
             self.listener.stop_consuming()
             self.logger.info("Server shutdown completed")
         except Exception as e:

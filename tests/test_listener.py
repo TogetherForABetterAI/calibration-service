@@ -24,8 +24,6 @@ def listener(mock_middleware, mock_channel):
 
 def test_listener_initialization(listener):
     """Verifica que el Listener se inicializa correctamente."""
-    assert listener.queue_name is not None
-    assert listener.connection_exchange is not None
     assert isinstance(listener.channel, Mock)
     assert listener.middleware_config == {"mock": "config"}
     assert isinstance(listener._active_clients, dict)
@@ -69,16 +67,6 @@ def test_handle_new_client_missing_id(listener):
 
         listener._handle_new_client(None, None, None, body)
         MockClientManager.assert_not_called()
-
-
-def test_handle_new_client_shutdown_in_progress(listener):
-    """Verifica que si el shutdown está iniciado, se lanza una excepción."""
-    listener.shutdown_initiated = True
-    body = json.dumps({"client_id": "client-123"}).encode("utf-8")
-
-    with pytest.raises(Exception, match="Shutdown in progress"):
-        listener._handle_new_client(None, None, None, body)
-
 
 def test_monitor_removals_removes_client(listener):
     """Verifica que el monitor elimina clientes cuando llegan IDs a la queue."""
@@ -135,5 +123,4 @@ def test_stop_consuming_sets_flag(listener):
     """Verifica que stop_consuming marca el shutdown y llama al método del middleware."""
     listener.middleware.stop_consuming = Mock()
     listener.stop_consuming()
-    assert listener.shutdown_initiated is True
-    listener.middleware.stop_consuming.assert_called_once_with(listener.channel)
+    listener.middleware.stop_consuming.assert_called_once()

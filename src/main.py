@@ -29,11 +29,13 @@ def start_service_with_graceful_shutdown(server, config):
     # Start server in its own thread
     logging.info("Starting service: %s", config.server_config.service_name)
     server.start()
+
     logging.info("Server started successfully")
 
     # Wait for shutdown signal
     quit_event.wait()
     logging.info("Shutting down service...")
+
     server.stop()
 
     # Wait for server thread to finish
@@ -47,6 +49,7 @@ def main():
     setup_logging(config)
     middleware = Middleware(config.middleware_config)
     server = Server(config, middleware_cls=middleware)
+    logging.info("Initialized server, starting main service loop")
     start_service_with_graceful_shutdown(server, config)
     
 

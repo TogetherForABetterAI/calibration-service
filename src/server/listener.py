@@ -34,8 +34,6 @@ class Listener:
         # Removal monitor thread
         self.remove_client_monitor = None
 
-        self.logger.info(f"Listener initialized for queue: {self.queue_name}")
-
     def _monitor_removals(self):
         """Monitor the removal queue and remove finished clients from _active_clients"""
         while True:
@@ -51,6 +49,7 @@ class Listener:
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
+        logging.info("Listener starting...")
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 

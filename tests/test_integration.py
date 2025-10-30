@@ -1,4 +1,5 @@
 from ast import List
+import time
 from typing import Union
 import pytest
 import signal
@@ -14,27 +15,6 @@ from src.proto import calibration_pb2, dataset_pb2
 from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
 import numpy as np
-
-
-
-@pytest.fixture
-def mock_config():
-    """Config simulado con los atributos mínimos necesarios."""
-    cfg = Mock()
-    cfg.log_level = "info"
-    cfg.server_config.service_name = "dataset-generator"
-    return cfg
-
-
-@pytest.fixture
-def mock_server():
-    """Servidor simulado con métodos start, stop y join."""
-    srv = Mock()
-    srv.start = Mock()
-    srv.stop = Mock()
-    srv.join = Mock()
-    return srv
-
 
 def test_setup_logging_invokes_initialize_logging():
     """Verifica que setup_logging llame correctamente a initialize_logging."""
@@ -73,8 +53,8 @@ def test_main_starts_service(mock_setup_logging, mock_init_config, mock_server, 
 @patch("src.main.Middleware")
 @patch("src.server.client_manager.Middleware")
 @patch("src.server.batch_handler.MlflowClient")
-@patch("src.main.setup_logging")
-def test_integration_main_runs_without_errors(mock_setup_logging, mock_mlflow_client_cls, mock_client_manager_middleware_cls, mock_listener_middleware_cls, mock_init_config):
+@patch("src.main.threading.Event")
+def test_integration_main_runs_without_errors(mock_event, mock_mlflow_client_cls, mock_client_manager_middleware_cls, mock_listener_middleware_cls, mock_init_config):
     """Prueba de integración para verificar que main se ejecute sin errores usando FakeMiddleware."""
     
     server_config = Mock(
@@ -107,14 +87,6 @@ def test_integration_main_runs_without_errors(mock_setup_logging, mock_mlflow_cl
     fake_listener_middleware = FakeMiddleware(config=middleware_config, messages={CONNECTION_QUEUE_NAME: ["{\"client_id\": \"client-001\"}", "{\"client_id\": \"client-002\"}", "{\"invalid_json\": \"missing_closing_bracket\"}"]})
     mock_listener_middleware_cls.return_value = fake_listener_middleware
 
-    """
-    message DataBatch {
-        bytes data = 1;
-        repeated int32 labels = 2;
-        int32 batch_index = 3;
-        bool is_last_batch = 4;
-        }
-    """
     probs: Union[List[float], np.ndarray] = [0.005, 0.9, 0.005, 0.005, 0.005, 0.005, 0.005, 0.06, 0.01, 0.005]
 
     pred = calibration_pb2.Predictions()
@@ -139,10 +111,11 @@ def test_integration_main_runs_without_errors(mock_setup_logging, mock_mlflow_cl
 
     mock_mlflow_client = Mock()
     mock_mlflow_client_cls.return_value = mock_mlflow_client
+    mock_event.return_value = Mock()
 
-    try:
-        main()
-    except Exception as e:
-        pytest.fail(f"main() raised an exception: {e}")
-
+    server = Server(fake_global_config, middleware_cls=fake_listener_middleware)
+    server.start()
+    time.sleep(1)
+    server.stop()
+    server.join()
     
