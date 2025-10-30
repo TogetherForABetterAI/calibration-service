@@ -13,7 +13,7 @@ class BatchHandler:
         self,
         client_id: str,
         mlflow_client: MlflowClient,
-        on_eof=None,
+        on_eof,
     ):
         self.client_id = client_id
         self._report_builder = ReportBuilder(client_id=client_id)
@@ -35,7 +35,6 @@ class BatchHandler:
 
     def stop_processing(self):
         """Stop processing and clean up resources."""
-
         self._mlflow_logger.end_run()
 
     def _send_report(self):
@@ -70,8 +69,9 @@ class BatchHandler:
             if self._labeled_eof and self._replies_eof:
                 self._send_report()
 
-            if self._on_eof and self._labeled_eof and self._replies_eof:
-                self._on_eof()  # Received both EOFs, time to finish consuming
+            if self._labeled_eof and self._replies_eof:
+                self._on_eof() 
+
         except Exception as e:
             logging.error(
                 f"Error handling data message for client {self.client_id}: {e}"
@@ -111,7 +111,7 @@ class BatchHandler:
             if self._labeled_eof and self._replies_eof:
                 self._send_report()
 
-            if self._on_eof and self._labeled_eof and self._replies_eof:
+            if self._labeled_eof and self._replies_eof:
                 self._on_eof()  # Received both EOFs, time to finish consuming
 
         except Exception as e:

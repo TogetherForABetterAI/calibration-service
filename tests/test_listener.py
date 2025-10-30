@@ -25,6 +25,9 @@ def listener(mock_middleware, mock_channel):
 def test_listener_initialization(listener):
     """Verifica que el Listener se inicializa correctamente."""
     assert listener.queue_name is not None
+    assert listener.connection_exchange is not None
+    assert isinstance(listener.channel, Mock)
+    assert listener.middleware_config == {"mock": "config"}
     assert isinstance(listener._active_clients, dict)
     assert not listener.shutdown_initiated
     assert listener.remove_client_queue is not None
@@ -113,15 +116,20 @@ def test_shutdown_calls_all_methods(listener):
 
 def test_shutdown_all_clients_terminates(listener):
     """Verifica que los ClientManagers activos sean terminados correctamente."""
-    mock_client = Mock()
-    mock_client.is_alive.return_value = True
-    listener._active_clients["client-a"] = mock_client
+    mock_client1 = Mock()
+    mock_client1.is_alive.return_value = True
+    listener._active_clients["client-a"] = mock_client1
+
+    mock_client2 = Mock()
+    mock_client2.is_alive.return_value = False
+    listener._active_clients["client-b"] = mock_client2
 
     listener._shutdown_all_clients()
 
-    mock_client.terminate.assert_called_once()
-    mock_client.join.assert_called_once()
-
+    mock_client1.terminate.assert_called_once()
+    mock_client1.join.assert_called_once()
+    mock_client2.terminate.assert_not_called()
+    mock_client2.join.assert_not_called()
 
 def test_stop_consuming_sets_flag(listener):
     """Verifica que stop_consuming marca el shutdown y llama al método del middleware."""

@@ -6,6 +6,7 @@ import threading
 from server.main import Server
 from lib.logger import initialize_logging
 from lib.config import initialize_config
+from src.middleware.middleware import Middleware
 
 
 def setup_logging(config):
@@ -44,7 +45,8 @@ def start_service_with_graceful_shutdown(server, config):
 def main():
     config = initialize_config()
     setup_logging(config)
-    server = Server(config)
+    middleware = Middleware(config.middleware_config)
+    server = Server(config, middleware_cls=middleware)
     start_service_with_graceful_shutdown(server, config)
     
 

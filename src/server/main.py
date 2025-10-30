@@ -3,7 +3,7 @@ import threading
 from threading import Thread
 from middleware.middleware import Middleware
 from server.listener import Listener
-from lib.config import DATASET_EXCHANGE
+from lib.config import CONNECTION_QUEUE_NAME, DATASET_EXCHANGE
 
 
 class Server(Thread):
@@ -11,7 +11,7 @@ class Server(Thread):
     Server handles RabbitMQ server operations for client notifications.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, middleware_cls):
         super().__init__()  # Initialize Thread base class
         self.config = config
         self.logger = logging.getLogger("calibration-server")
@@ -19,10 +19,10 @@ class Server(Thread):
 
         # Establish RabbitMQ connection and middleware
         self.logger.info("Connecting to RabbitMQ...")
-        self.middleware = Middleware(self.config.middleware_config)
+        self.middleware = middleware_cls
         channel = self.middleware.create_channel(prefetch_count=1)
         self.middleware.setup_connection_queue(channel, durable=False)
-        # Initialize listener
+
         self.logger.info("Initializing Listener...")
         self.listener = Listener(middleware=self.middleware, channel=channel)
 

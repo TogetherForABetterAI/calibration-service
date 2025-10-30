@@ -14,9 +14,13 @@ class Listener:
             middleware.config
         )  # Store config to pass to child processes
         self.logger = logger or logging.getLogger("listener")
-        self.queue_name = CONNECTION_QUEUE_NAME
-        self.connection_exchange = CONNECTION_EXCHANGE
         self.channel = channel
+
+        self.middleware.basic_consume(
+            channel=channel,
+            queue_name=CONNECTION_QUEUE_NAME,
+            callback_function=self._handle_new_client,
+        )
 
         # Queue to receive removal requests from child processes
         self.remove_client_queue = Queue()
@@ -25,7 +29,6 @@ class Listener:
         self._active_clients: Dict[str, ClientManager] = {}
         self._clients_lock = threading.Lock()
 
-        self.shutdown_lock = threading.Lock()
         self.shutdown_initiated = False
 
         # Removal monitor thread
@@ -33,58 +36,31 @@ class Listener:
 
         self.logger.info(f"Listener initialized for queue: {self.queue_name}")
 
-    def _shutdown_all_clients(self):
-        """Terminate all active ClientManager processes."""
-        self.logger.info("Shutting down all client managers...")
-
-        for (
-            client_id,
-            handler,
-        ) in self._active_clients.items():  # No need to lock _active_clients here
-            if handler.is_alive():
-                try:
-                    handler.terminate()  # Send SIGTERM to the process
-                    handler.join()
-                except Exception as e:
-                    self.logger.error(
-                        f"Error shutting down ClientManager {client_id}: {e}"
-                    )
-            else:
-                self.logger.info(f"ClientManager {client_id} already stopped")
-
     def _monitor_removals(self):
         """Monitor the removal queue and remove finished clients from _active_clients"""
         while True:
             try:
                 client_id = self.remove_client_queue.get(
                     block=True
-                )  # Block until a message is available
+                ) 
                 if client_id is None:
-                    break  # We send None to stop the thread
+                    break  
                 self._remove_handler(client_id)
             except:
                 continue
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
-
-        # Thread to remove clients from _active_clients
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 
         try:
-            self.middleware.basic_consume(
-                channel=self.channel,
-                queue_name=self.queue_name,
-                callback_function=self._handle_new_client,
-            )
-            self.middleware.start_consuming(
-                self.channel
-            )  # This will block until stop_consuming() is called
+            if not self.shutdown_initiated: 
+                self.middleware.start_consuming(
+                    self.channel
+                ) 
         except Exception as e:
-            with self.shutdown_lock:
-                if not self.shutdown_initiated:
-                    self.logger.error(f"Error in listener loop: {e}")
+            self.logger.error(f"Error in Listener: {e}")
         finally:
             self.shutdown()
 
@@ -93,36 +69,27 @@ class Listener:
         try:
             self.logger.info("Received new client connection notification")
 
-            with self.shutdown_lock:
-                if self.shutdown_initiated:
-                    raise Exception(
-                        "Shutdown in progress, not accepting new clients"
-                    )  # Requeue the message
-
-            # Parse client_id from message before creating process
             notification = json.loads(body.decode("utf-8"))
             client_id = notification.get("client_id")
             if not client_id:
                 self.logger.info(
                     f"Client notification missing client_id: {notification}"
                 )
-                return  # Ack the message to remove it from the queue
+                return  
 
-            # ClientManager will create its own RabbitMQ connection
             client_manager = ClientManager(
                 client_id=client_id,
                 middleware_config=self.middleware_config,
                 remove_client_queue=self.remove_client_queue,
             )
 
-            # Add to active clients before starting the process
             self._add_client(client_id, client_manager)
 
             client_manager.start()
 
         except Exception as e:
             self.logger.error(f"Error handling new client message: {e}")
-            raise e  # Requeue the message
+            raise e  
 
     def _remove_handler(self, client_id: str):
         """Remove a finished client manager from the active clients dict"""
@@ -138,10 +105,27 @@ class Listener:
                 self._active_clients[client_id] = handler
                 self.logger.info(f"Added ClientManager for client {client_id}")
 
+    def _shutdown_all_clients(self):
+        """Terminate all active ClientManager processes."""
+        self.logger.info("Shutting down all client managers...")
+
+        for (
+            client_id,
+            handler,
+        ) in self._active_clients.items():
+            if handler.is_alive():
+                try:
+                    handler.terminate()  
+                    handler.join()
+                except Exception as e:
+                    self.logger.error(
+                        f"Error shutting down ClientManager {client_id}: {e}"
+                    )
+
     def shutdown(self):
         """Gracefully shutdown listener and all resources."""
-        self.remove_client_queue.put(None)  # Signal to stop
-        self.remove_client_monitor.join()  # Wait to finish
+        self.remove_client_queue.put(None)  
+        self.remove_client_monitor.join()
         self._shutdown_all_clients()
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
@@ -149,6 +133,6 @@ class Listener:
 
     def stop_consuming(self):
         """Signal to stop consuming messages and initiate shutdown."""
-        with self.shutdown_lock:
-            self.shutdown_initiated = True
-        self.middleware.stop_consuming(self.channel)
+        self.shutdown_initiated = True
+        if self.middleware.is_running():
+            self.middleware.stop_consuming()

@@ -12,7 +12,7 @@ class ClientManager(Process):
         self,
         client_id: str,
         middleware_config,
-        remove_client_queue: Queue = None,
+        remove_client_queue: Queue,
     ):
         """
         Initialize ClientManager as a Process.
@@ -32,12 +32,14 @@ class ClientManager(Process):
         self.shutdown_initiated = False
         self.logger = logging.getLogger(f"client-manager-{client_id}")
 
-    def _handle_shutdown_signal(self):
+        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+
+
+    def _handle_shutdown_signal(self, signum, frame):
         """Handle SIGTERM signal for graceful shutdown."""
         self.logger.info(f"Received SIGTERM signal for client {self.client_id}")
         self.shutdown_initiated = True
         self.consumer.set_shutdown()
-        self.consumer.stop_consuming()
         self.batch_handler.stop_processing()
 
     def run(self):
@@ -45,15 +47,7 @@ class ClientManager(Process):
         Main process loop: parse message, setup queues, create consumer, and start processing.
         Each process creates its own RabbitMQ connection to avoid conflicts.
         """
-
-        def handle_sigterm(signum, frame):
-            self._handle_shutdown_signal()
-
-        signal.signal(signal.SIGTERM, handle_sigterm)
-
         try:
-
-            # Setup BatchHandler
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
                 mlflow_client=MlflowClient(),
@@ -69,11 +63,11 @@ class ClientManager(Process):
             )
 
             if not self.shutdown_initiated:
-                self.consumer.start()  # This will block until stop_consuming() is called
-
-            # Notify parent that this client has finished
-            if self.remove_client_queue and not self.shutdown_initiated:
+                self.consumer.start()  
+        
+            if not self.shutdown_initiated:
                 self.remove_client_queue.put(self.client_id)
+                
         except Exception as e:
             self.logger.error(f"Error setting up client {self.client_id}: {e}")
 
