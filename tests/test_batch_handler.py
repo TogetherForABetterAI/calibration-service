@@ -5,16 +5,13 @@ from src.server.batch_handler import BatchHandler
 from lib.data_types import DataType
 
 
-@pytest.fixture
-def mock_mlflow_client():
+
+def mlflow_logger_factory(client_id: str):
     return Mock()
 
-
 @pytest.fixture
-def handler(mock_mlflow_client):
-    with patch("src.server.batch_handler.MlflowLogger") as MockLogger:
-        instance = MockLogger.return_value
-        return BatchHandler(client_id="client1", mlflow_client=mock_mlflow_client, on_eof=Mock())
+def handler():
+    return BatchHandler(client_id="client1", mlflow_logger_factory=mlflow_logger_factory, on_eof=Mock())
 
 
 def test_initialization(handler):

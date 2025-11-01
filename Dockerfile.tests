@@ -15,4 +15,4 @@ COPY . .
 
 ENV PYTHONPATH=/app/src
 
-CMD ["pytest", "tests/", "-v", "--tb=short", "--color=yes"]
+CMD ["pytest", "tests/", "-v", "-s", "-o", "log_cli=true", "--log-cli-level=INFO", "--color=yes"]

@@ -1,7 +1,6 @@
 import logging
 from multiprocessing import Process, Queue
 import signal
-from mlflow import MlflowClient
 from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
 from src.middleware.middleware import Middleware
@@ -11,8 +10,9 @@ class ClientManager(Process):
     def __init__(
         self,
         client_id: str,
-        middleware_config,
+        middleware,
         remove_client_queue: Queue,
+        mlflow_logger_factory,
     ):
         """
         Initialize ClientManager as a Process.
@@ -23,15 +23,15 @@ class ClientManager(Process):
             remove_client_queue: Queue to send removal requests to parent process
         """
         super().__init__()
+        self.logger = logging.getLogger(f"client-manager-{client_id}")
+        self.logger.info(f"Initializing ClientManager for client {client_id}")
         self.client_id = client_id
-        self.middleware_config = middleware_config
-        self.middleware = Middleware(middleware_config)  # create new connection
+        self.middleware = middleware
         self.remove_client_queue = remove_client_queue
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
-        self.logger = logging.getLogger(f"client-manager-{client_id}")
-
+        self.mlflow_logger_factory = mlflow_logger_factory
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
 
 
@@ -50,8 +50,8 @@ class ClientManager(Process):
         try:
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
-                mlflow_client=MlflowClient(),
-                on_eof=self._handle_EOF_message,
+                mlflow_logger_factory=self.mlflow_logger_factory,
+                on_eof=self._handle_EOF_message,    
             )
 
             self.consumer = Consumer(

@@ -59,8 +59,8 @@ class Consumer:
 
     def shutdown(self):
         """Gracefully shutdown the consumer."""
-        self.middleware.delete_queue(channel=self.channel, queue=self.labeled_queue_name)
-        self.middleware.delete_queue(channel=self.channel, queue=self.replies_queue_name)
+        self.middleware.delete_queue(channel=self.channel, queue_name=self.labeled_queue_name)
+        self.middleware.delete_queue(channel=self.channel, queue_name=self.replies_queue_name)
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
         self.logger.info(f"Consumer shutdown complete for client {self.client_id}")

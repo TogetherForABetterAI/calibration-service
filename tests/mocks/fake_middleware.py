@@ -52,12 +52,11 @@ class FakeMiddleware:
             for msg_queue_name in self.messages:
                 if msg_queue_name in cb_queue_name:
                     for msg in self.messages[msg_queue_name]:
-                        message = msg.encode("utf-8")
                         callback(
                             channel,
                             Mock(),  # method
                             Mock(),  # properties
-                            message,  # body
+                            msg,  # body
                         )
 
         

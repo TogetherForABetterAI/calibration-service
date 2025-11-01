@@ -16,10 +16,16 @@ def mock_middleware():
 def mock_channel():
     return Mock()
 
+def cm_middleware_factory(config):
+    return Mock()
+
+def mlflow_logger_factory(client_id: str):
+    return Mock()
 
 @pytest.fixture
 def listener(mock_middleware, mock_channel):
-    return Listener(middleware=mock_middleware, channel=mock_channel)
+    return Listener(middleware=mock_middleware, channel=mock_channel, cm_middleware_factory=cm_middleware_factory, mlflow_logger_factory=mlflow_logger_factory)
+
 
 
 def test_listener_initialization(listener):
@@ -83,41 +89,6 @@ def test_monitor_removals_removes_client(listener):
     thread.join(timeout=1)
 
     assert client_id not in listener._active_clients
-
-
-def test_shutdown_calls_all_methods(listener):
-    """Verifica que el shutdown cierra conexiones y termina procesos."""
-    listener.remove_client_monitor = Mock()
-    listener.remove_client_monitor.join = Mock()
-
-    listener.middleware.close_channel = Mock()
-    listener.middleware.close_connection = Mock()
-
-    listener._shutdown_all_clients = Mock()
-
-    listener.shutdown()
-
-    listener._shutdown_all_clients.assert_called_once()
-    listener.middleware.close_channel.assert_called_once_with(listener.channel)
-    listener.middleware.close_connection.assert_called_once()
-
-
-def test_shutdown_all_clients_terminates(listener):
-    """Verifica que los ClientManagers activos sean terminados correctamente."""
-    mock_client1 = Mock()
-    mock_client1.is_alive.return_value = True
-    listener._active_clients["client-a"] = mock_client1
-
-    mock_client2 = Mock()
-    mock_client2.is_alive.return_value = False
-    listener._active_clients["client-b"] = mock_client2
-
-    listener._shutdown_all_clients()
-
-    mock_client1.terminate.assert_called_once()
-    mock_client1.join.assert_called_once()
-    mock_client2.terminate.assert_not_called()
-    mock_client2.join.assert_not_called()
 
 def test_stop_consuming_sets_flag(listener):
     """Verifica que stop_consuming marca el shutdown y llama al método del middleware."""

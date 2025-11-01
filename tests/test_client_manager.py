@@ -8,16 +8,11 @@ from src.server.client_manager import ClientManager
 def mock_middleware():
     return Mock()
 
-
 @pytest.fixture
-def mock_config():
-    return {"mock": "config"}
-
-
-@pytest.fixture
-def client_manager(mock_config):
-    with patch("src.server.client_manager.Middleware", return_value=Mock()):
-        return ClientManager(client_id="client123", middleware_config=mock_config, remove_client_queue=None)
+def client_manager(mock_middleware):
+    def mlflow_logger_factory(client_id: str):
+        return Mock()
+    return ClientManager(client_id="client123", middleware=mock_middleware, remove_client_queue=None, mlflow_logger_factory=mlflow_logger_factory)
 
 
 def test_initialization(client_manager):
@@ -43,8 +38,7 @@ def test_handle_shutdown_signal_stops_all(client_manager):
 @patch("src.server.client_manager.signal.signal")
 @patch("src.server.client_manager.BatchHandler")
 @patch("src.server.client_manager.Consumer")
-@patch("src.server.client_manager.MlflowClient")
-def test_run_success(MockMlflow, MockConsumer, MockBatchHandler, mock_signal, client_manager):
+def test_run_success(MockConsumer, MockBatchHandler, mock_signal, client_manager):
     """Simula una ejecución exitosa del proceso."""
     mock_consumer = Mock()
     MockConsumer.return_value = mock_consumer
@@ -64,8 +58,7 @@ def test_run_success(MockMlflow, MockConsumer, MockBatchHandler, mock_signal, cl
 @patch("src.server.client_manager.signal.signal")
 @patch("src.server.client_manager.BatchHandler")
 @patch("src.server.client_manager.Consumer")
-@patch("src.server.client_manager.MlflowClient")
-def test_run_with_exception(MockMlflow, MockConsumer, MockBatchHandler, mock_signal, client_manager):
+def test_run_with_exception(MockConsumer, MockBatchHandler, mock_signal, client_manager):
     """Verifica que si algo falla en run, se loguea el error y no lanza excepción."""
     MockBatchHandler.side_effect = Exception("boom")
     client_manager.logger = Mock()

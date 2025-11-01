@@ -12,7 +12,7 @@ class BatchHandler:
     def __init__(
         self,
         client_id: str,
-        mlflow_client: MlflowClient,
+        mlflow_logger_factory,
         on_eof,
     ):
         self.client_id = client_id
@@ -23,9 +23,7 @@ class BatchHandler:
         self._on_eof = on_eof
 
         try:
-            self._mlflow_logger = MlflowLogger(
-                mlflow_client=mlflow_client, client_id=client_id
-            )
+            self._mlflow_logger = mlflow_logger_factory(client_id=client_id)
         except Exception as e:
             logging.error(
                 f"Failed to initialize MLflow logger for client {client_id}: {e}"

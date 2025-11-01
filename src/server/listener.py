@@ -6,14 +6,17 @@ from lib.config import CONNECTION_QUEUE_NAME, CONNECTION_EXCHANGE
 from server.client_manager import ClientManager
 import json
 
+from src.middleware.middleware import Middleware
+
 
 class Listener:
-    def __init__(self, middleware, channel, logger=None):
+    def __init__(self, middleware, cm_middleware_factory, channel, mlflow_logger_factory, logger=None):
         self.middleware = middleware
         self.middleware_config = (
             middleware.config
         )  # Store config to pass to child processes
         self.logger = logger or logging.getLogger("listener")
+        self.mlflow_logger_factory = mlflow_logger_factory
         self.channel = channel
 
         self.middleware.basic_consume(
@@ -21,6 +24,7 @@ class Listener:
             queue_name=CONNECTION_QUEUE_NAME,
             callback_function=self._handle_new_client,
         )
+        self.cm_middleware_factory = cm_middleware_factory  
 
         # Queue to receive removal requests from child processes
         self.remove_client_queue = Queue()
@@ -53,15 +57,16 @@ class Listener:
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 
-        try:
-            if not self.shutdown_initiated: 
-                self.middleware.start_consuming(
-                    self.channel
-                ) 
-        except Exception as e:
-            self.logger.error(f"Error in Listener: {e}")
-        finally:
-            self.shutdown()
+        if not self.shutdown_initiated: 
+            self.middleware.start_consuming(
+                self.channel
+            ) 
+
+        if self.shutdown_initiated:
+            self.finish(shutdown=True)
+            return
+            
+        self.finish(shutdown=False)
 
     def _handle_new_client(self, ch, method, properties, body):
         """Launch a ClientManager process for each new client notification (all logic inside ClientManager)."""
@@ -78,8 +83,9 @@ class Listener:
 
             client_manager = ClientManager(
                 client_id=client_id,
-                middleware_config=self.middleware_config,
+                middleware=self.cm_middleware_factory(self.middleware_config),
                 remove_client_queue=self.remove_client_queue,
+                mlflow_logger_factory=self.mlflow_logger_factory,
             )
 
             self._add_client(client_id, client_manager)
@@ -104,31 +110,33 @@ class Listener:
                 self._active_clients[client_id] = handler
                 self.logger.info(f"Added ClientManager for client {client_id}")
 
-    def _shutdown_all_clients(self):
-        """Terminate all active ClientManager processes."""
-        self.logger.info("Shutting down all client managers...")
 
+
+    def join_all_clients(self, shutdown=False):
+        """Join all active ClientManager processes."""
+        self.logger.info("Shutting down all client managers...")
+        active_clients = list(self._active_clients.items())
         for (
             client_id,
             handler,
-        ) in self._active_clients.items():
+        ) in active_clients:
             if handler.is_alive():
                 try:
-                    handler.terminate()  
+                    if shutdown:
+                        handler.terminate()  
                     handler.join()
                 except Exception as e:
                     self.logger.error(
                         f"Error shutting down ClientManager {client_id}: {e}"
                     )
 
-    def shutdown(self):
-        """Gracefully shutdown listener and all resources."""
-        self.remove_client_queue.put(None)  
-        self.remove_client_monitor.join()
-        self._shutdown_all_clients()
+    def finish(self, shutdown=False):
+        """Finish listener operations before shutdown."""
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
-        self.logger.info("Listener shutdown completed")
+        self.join_all_clients(shutdown)
+        self.remove_client_queue.put(None)  
+        self.remove_client_monitor.join()
 
     def stop_consuming(self):
         """Signal to stop consuming messages and initiate shutdown."""
