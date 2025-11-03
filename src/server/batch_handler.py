@@ -12,20 +12,19 @@ class BatchHandler:
     def __init__(
         self,
         client_id: str,
-        mlflow_client: MlflowClient,
-        on_eof=None,
+        mlflow_logger,
+        on_eof,
+        report_builder
     ):
         self.client_id = client_id
-        self._report_builder = ReportBuilder(client_id=client_id)
+        self._report_builder = report_builder
         self._labeled_eof = False
         self._replies_eof = False
         self._batches: Dict[int, Dict] = {}
         self._on_eof = on_eof
 
         try:
-            self._mlflow_logger = MlflowLogger(
-                mlflow_client=mlflow_client, client_id=client_id
-            )
+            self._mlflow_logger = mlflow_logger
         except Exception as e:
             logging.error(
                 f"Failed to initialize MLflow logger for client {client_id}: {e}"
@@ -35,10 +34,9 @@ class BatchHandler:
 
     def stop_processing(self):
         """Stop processing and clean up resources."""
-
         self._mlflow_logger.end_run()
 
-    def _send_report(self):
+    def send_report(self):
         """Build and send report when both labeled and replies data are complete."""
         y_pred = []
         y_test = []
@@ -48,7 +46,7 @@ class BatchHandler:
                 y_test.extend(batch[DataType.LABELS])
         self._report_builder.build_report(y_test, y_pred)
         logging.info(f"action: build_report | result: success")
-        # self._report_builder.send_report()
+        self._report_builder.send_report()
         logging.info(f"action: send_report | result: success")
 
     def _handle_data_message(self, body):
@@ -68,10 +66,11 @@ class BatchHandler:
                 self._labeled_eof = True
 
             if self._labeled_eof and self._replies_eof:
-                self._send_report()
+                self.send_report()
 
-            if self._on_eof and self._labeled_eof and self._replies_eof:
-                self._on_eof()  # Received both EOFs, time to finish consuming
+            if self._labeled_eof and self._replies_eof:
+                self._on_eof() 
+
         except Exception as e:
             logging.error(
                 f"Error handling data message for client {self.client_id}: {e}"
@@ -109,9 +108,9 @@ class BatchHandler:
                 self._replies_eof = True
 
             if self._labeled_eof and self._replies_eof:
-                self._send_report()
+                self.send_report()
 
-            if self._on_eof and self._labeled_eof and self._replies_eof:
+            if self._labeled_eof and self._replies_eof:
                 self._on_eof()  # Received both EOFs, time to finish consuming
 
         except Exception as e:

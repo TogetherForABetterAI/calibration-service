@@ -1,49 +1,64 @@
 import logging
 import threading
-from time import time
+import time
 from typing import Dict
 from multiprocessing import Queue
 from lib.config import CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
 from server.client_manager import ClientManager
 import json
 
+from src.middleware.middleware import Middleware
+
 
 class Listener:
     def __init__(
         self,
-        middleware,
-        channel,
-        upper_bound_clients,
-        lower_bound_clients,
+        middleware, 
+        channel, 
+        upper_bound_clients, 
+        lower_bound_clients,  
+        cm_middleware_factory,         
         replica_id,
         replica_timeout_seconds,
+        mlflow_logger_factory, 
+        report_builder_factory, 
         master_replica_id=1,
-        initial_timeout=30,
+        initial_timeout=30, 
         logger=None,
     ):
         self.middleware = middleware
-        self.middleware_config = middleware.config
-        self.logger = logger or logging.getLogger("Listener")
-
-        # Configuración de límites
+        self.middleware_config = (
+            middleware.config
+        )  # Store config to pass to child processes
+        self.middleware.basic_consume(
+            channel=channel,
+            queue_name=CONNECTION_QUEUE_NAME,
+            callback_function=self._handle_new_client,
+        )
         self.upper_bound_clients = upper_bound_clients
         self.lower_bound_clients = lower_bound_clients
+        self.logger = logger or logging.getLogger("listener")
+        self.channel = channel
+        self.consumer_tag = None
+        self.lower_bound_reached = False
+
+        
+        # Configuración de límites
         self.replica_id = replica_id
         self.replica_timeout_seconds = replica_timeout_seconds
         self.initial_timeout = initial_timeout
         self.master_replica_id = master_replica_id
 
-        self.channel = channel
-        self.consumer_tag = None
-        self.lower_bound_reached = False
-
+        # Client manager factory
+        self.cm_middleware_factory = cm_middleware_factory
+        self.report_builder_factory = report_builder_factory
+        self.mlflow_logger_factory = mlflow_logger_factory
 
         # Control de procesos cliente
         self._active_clients: Dict[str, ClientManager] = {}
         self._clients_lock = threading.Lock()
 
         # Control de apagado seguro
-        self.shutdown_lock = threading.Lock()
         self.shutdown_initiated = False
 
         # Colas para comunicación entre hilos
@@ -77,17 +92,15 @@ class Listener:
             try:
                 client_id = self.remove_client_queue.get(
                     block=True
-                )  # Block until a message is available
+                ) 
                 if client_id is None:
                     self.clients_removed_queue.put(None)
                     self.lower_bound_reached_queue.put(None)
-                    break 
-
-                self._remove_client(client_id)
-                self.clients_removed_queue.put(client_id)
+                    break  
+                self._remove_handler(client_id)
+                # self.clients_removed_queue.put(client_id)
                 self.lower_bound_reached_queue.put(client_id)
-            except Exception as e:
-                self.logger.error(f"Error monitoring removals: {e}")
+            except:
                 continue
 
 
@@ -147,39 +160,30 @@ class Listener:
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
-
-        # Thread to remove clients from _active_clients
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 
         if self.replica_id != self.master_replica_id:
             self.lower_bound_reached_thread = threading.Thread(target=self.lower_bound_checker)
             self.lower_bound_reached_thread.start()
-        try:
-            self.consumer_tag = self.middleware.basic_consume(
-                channel=self.channel,
-                queue_name=CONNECTION_QUEUE_NAME,
-                callback_function=self._handle_new_client,
-            )
-            self.start_consumption()
-
-        except Exception as e:
-            with self.shutdown_lock:
-                if not self.shutdown_initiated:
-                    self.logger.error(f"Error in listener loop: {e}")
-        finally:
-            self.shutdown()
+            
+        if not self.shutdown_initiated: 
+            self.middleware.start_consuming(
+                self.channel
+            ) 
+ 
+        if self.shutdown_initiated:
+            self.finish(shutdown=True)
+            return
+            
+        logging.info("Listener stopping consumption...")
+        self.finish(shutdown=False)
+        
 
     def _handle_new_client(self, ch, method, properties, body):
         """Launch a ClientManager process for each new client notification (all logic inside ClientManager)."""
         try:
             self.logger.info("Received new client connection notification")
-
-            with self.shutdown_lock:
-                if self.shutdown_initiated:
-                    raise Exception(
-                        "Shutdown in progress, not accepting new clients"
-                    )  # Requeue the message
 
             notification = json.loads(body.decode("utf-8"))
             client_id = notification.get("client_id")
@@ -188,16 +192,16 @@ class Listener:
                 self.logger.info(
                     f"Client notification missing client_id: {notification}"
                 )
-                return  # Ack the message to remove it from the queue
+                return  
 
-            # ClientManager will create its own RabbitMQ connection
             client_manager = ClientManager(
                 client_id=client_id,
-                middleware_config=self.middleware_config,
+                middleware=self.cm_middleware_factory(self.middleware_config),
                 remove_client_queue=self.remove_client_queue,
+                mlflow_logger=self.mlflow_logger_factory(client_id=client_id),
+                report_builder=self.report_builder_factory(client_id=client_id),
             )
 
-            # Add to active clients before starting the process
             self._add_client(client_id, client_manager)
             active_clients_count = self._get_active_clients_count()
 
@@ -213,7 +217,7 @@ class Listener:
 
         except Exception as e:
             self.logger.error(f"Error handling new client message: {e}")
-            raise e  # Requeue the message
+            raise e  
 
     def _notify_coordinator_scale(self):
         """Notify the coordinator exchange to scale up replicas."""
@@ -252,34 +256,43 @@ class Listener:
                 self._active_clients[client_id] = handler
                 self.logger.info(f"Added ClientManager for client {client_id}")
 
+    def _remove_handler(self, client_id: str):
+        """Remove a finished client manager from the active clients dict"""
+        with self._clients_lock:
+            if client_id in self._active_clients:
+                del self._active_clients[client_id]
+                self.logger.info(f"Removed ClientManager for client {client_id}")
 
-    def shutdown(self):
-        """Gracefully shutdown listener and all resources."""
-        self.remove_client_queue.put(None)  # Signal to stop
-        self.remove_client_monitor.join()  # Wait to finish
-        if self.replica_id != self.master_replica_id:
-            self.lower_bound_reached_thread.join()
+    def join_all_clients(self, shutdown=False):
+        """Join all active ClientManager processes."""
+        self.logger.info("Joining all client managers...")
+        active_clients = list(self._active_clients.items())
+        for (
+            client_id,
+            handler,
+        ) in active_clients:
+            if handler.is_alive():
+                try:
+                    if shutdown:
+                        handler.terminate()  
+                    handler.join()
+                except Exception as e:
+                    self.logger.error(
+                        f"Error shutting down ClientManager {client_id}: {e}"
+                    )
 
-        self._shutdown_all_clients()
+    def finish(self, shutdown=False):
+        """Finish listener operations before shutdown."""
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
-        self.logger.info("Listener shutdown completed")
+        if self.replica_id != self.master_replica_id:
+            self.lower_bound_reached_thread.join()
+        self.join_all_clients(shutdown)
+        self.remove_client_queue.put(None)  
+        self.remove_client_monitor.join()
 
     def stop_consuming(self):
         """Signal to stop consuming messages and initiate shutdown."""
-        with self.shutdown_lock:
-            if self.shutdown_initiated:
-                return 
-            self.shutdown_initiated = True
-
-        self.remove_client_queue.put(None)
-        if self.remove_client_monitor:
-            self.remove_client_monitor.join()
-
-        if self.lower_bound_reached_thread:
-            self.lower_bound_reached_thread.join()
-
-        self._shutdown_all_clients()
-        self.middleware.close_channel(self.channel)
-        self.middleware.close_connection()            
-        self.middleware.stop_consuming(self.channel)
+        self.shutdown_initiated = True
+        if self.middleware.is_running():
+            self.middleware.stop_consuming()

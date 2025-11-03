@@ -1,8 +1,5 @@
 import logging
-import threading
-import time
 from lib.config import DATASET_EXCHANGE, REPLIES_EXCHANGE
-from middleware.middleware import Middleware
 
 
 class Consumer:
@@ -15,8 +12,8 @@ class Consumer:
         self,
         middleware,  # object with host, port, credentials, etc.
         client_id,
-        labeled_callback=None,
-        replies_callback=None,
+        labeled_callback,
+        replies_callback,
         logger=None,
     ):
         self.middleware = middleware
@@ -34,11 +31,13 @@ class Consumer:
         self._shutdown_initiated = False
 
     def start(self):
+        logging.info(f"Starting Consumer for client {self.client_id}")
         """Declare/bind queues, start consuming, and ACK the original message."""
         try:
             self._setup_queues()
             if not self._shutdown_initiated:
                 self.middleware.start_consuming(self.channel)
+                logging.info(f"Consumer started for client {self.client_id}")
         except Exception as e:
             self.logger.error(f"Error in Consumer for client {self.client_id}: {e}")
         finally:
@@ -46,38 +45,24 @@ class Consumer:
 
     def _labeled_callback(self, ch, method, properties, body):
         """Wrapper callback for labeled queue messages."""
-        if self._shutdown_initiated:
-            self.middleware.stop_consuming(self.channel)
-            # Note: ACK/NACK is handled by middleware's callback_wrapper
-
-        if self.labeled_callback:
-            self.labeled_callback(ch, method, properties, body)
+        self.labeled_callback(ch, method, properties, body)
 
     def _replies_callback(self, ch, method, properties, body):
         """Wrapper callback for replies queue messages."""
-        if self._shutdown_initiated:
-            self.middleware.stop_consuming(self.channel)
-        # Note: ACK/NACK is handled by middleware's callback_wrapper
-
-        if self.replies_callback:
-            self.replies_callback(ch, method, properties, body)
+        self.replies_callback(ch, method, properties, body)
 
     def stop_consuming(self):
-        try:
-            self.middleware.stop_consuming(self.channel)
-            self.logger.info(
-                f"Consumer stopped and channel closed for client {self.client_id}"
-            )
-        except Exception as e:
-            self.logger.error(
-                f"Error stopping consumer for client {self.client_id}: {e}"
-            )
+        self.middleware.stop_consuming()
 
     def set_shutdown(self):
         self._shutdown_initiated = True
+        if self.middleware.is_running():
+            self.stop_consuming()
 
     def shutdown(self):
         """Gracefully shutdown the consumer."""
+        self.middleware.delete_queue(channel=self.channel, queue_name=self.labeled_queue_name)
+        self.middleware.delete_queue(channel=self.channel, queue_name=self.replies_queue_name)
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
         self.logger.info(f"Consumer shutdown complete for client {self.client_id}")
