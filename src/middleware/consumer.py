@@ -31,11 +31,13 @@ class Consumer:
         self._shutdown_initiated = False
 
     def start(self):
+        logging.info(f"Starting Consumer for client {self.client_id}")
         """Declare/bind queues, start consuming, and ACK the original message."""
         try:
             self._setup_queues()
             if not self._shutdown_initiated:
                 self.middleware.start_consuming(self.channel)
+                logging.info(f"Consumer started for client {self.client_id}")
         except Exception as e:
             self.logger.error(f"Error in Consumer for client {self.client_id}: {e}")
         finally:

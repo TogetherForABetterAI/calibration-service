@@ -10,7 +10,7 @@ class Server():
     Server handles RabbitMQ server operations for client notifications.
     """
 
-    def __init__(self, config, middleware_cls, cm_middleware_factory, mlflow_logger_factory):
+    def __init__(self, config, middleware_cls, cm_middleware_factory, mlflow_logger_factory, report_builder_factory):
         self.config = config
         self.logger = logging.getLogger("calibration-server")
         self.logger.info("Initializing Calibration Server")
@@ -22,7 +22,7 @@ class Server():
         self.middleware.setup_connection_queue(channel, durable=False)
 
         self.logger.info("Initializing Listener...")
-        self.listener = Listener(middleware=self.middleware, channel=channel, cm_middleware_factory=cm_middleware_factory, mlflow_logger_factory=mlflow_logger_factory)
+        self.listener = Listener(middleware=self.middleware, channel=channel, cm_middleware_factory=cm_middleware_factory, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
 
         self.logger.info(
             f"Server initialized - ready to consume from {self.config.middleware_config.host}"

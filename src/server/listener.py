@@ -10,7 +10,7 @@ from src.middleware.middleware import Middleware
 
 
 class Listener:
-    def __init__(self, middleware, cm_middleware_factory, channel, mlflow_logger_factory, logger=None):
+    def __init__(self, middleware, cm_middleware_factory, channel, mlflow_logger_factory, report_builder_factory, logger=None):
         self.middleware = middleware
         self.middleware_config = (
             middleware.config
@@ -25,6 +25,7 @@ class Listener:
             callback_function=self._handle_new_client,
         )
         self.cm_middleware_factory = cm_middleware_factory  
+        self.report_builder_factory = report_builder_factory
 
         # Queue to receive removal requests from child processes
         self.remove_client_queue = Queue()
@@ -85,7 +86,8 @@ class Listener:
                 client_id=client_id,
                 middleware=self.cm_middleware_factory(self.middleware_config),
                 remove_client_queue=self.remove_client_queue,
-                mlflow_logger_factory=self.mlflow_logger_factory,
+                mlflow_logger=self.mlflow_logger_factory(client_id=client_id),
+                report_builder=self.report_builder_factory(client_id=client_id),
             )
 
             self._add_client(client_id, client_manager)
@@ -114,7 +116,7 @@ class Listener:
 
     def join_all_clients(self, shutdown=False):
         """Join all active ClientManager processes."""
-        self.logger.info("Shutting down all client managers...")
+        self.logger.info("Joining all client managers...")
         active_clients = list(self._active_clients.items())
         for (
             client_id,

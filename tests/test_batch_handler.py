@@ -9,9 +9,12 @@ from lib.data_types import DataType
 def mlflow_logger_factory(client_id: str):
     return Mock()
 
+def report_builder_factory(client_id: str):
+    return Mock()   
+
 @pytest.fixture
 def handler():
-    return BatchHandler(client_id="client1", mlflow_logger_factory=mlflow_logger_factory, on_eof=Mock())
+    return BatchHandler(client_id="client1", mlflow_logger=mlflow_logger_factory(client_id="client1"), report_builder=report_builder_factory(client_id="client1"), on_eof=Mock())
 
 
 def test_initialization(handler):

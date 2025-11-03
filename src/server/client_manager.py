@@ -12,7 +12,8 @@ class ClientManager(Process):
         client_id: str,
         middleware,
         remove_client_queue: Queue,
-        mlflow_logger_factory,
+        mlflow_logger,
+        report_builder,
     ):
         """
         Initialize ClientManager as a Process.
@@ -31,7 +32,8 @@ class ClientManager(Process):
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
-        self.mlflow_logger_factory = mlflow_logger_factory
+        self.mlflow_logger = mlflow_logger
+        self.report_builder = report_builder
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
 
 
@@ -48,10 +50,12 @@ class ClientManager(Process):
         Each process creates its own RabbitMQ connection to avoid conflicts.
         """
         try:
+            logging.info(f"ClientManager process started for client {self.client_id}")
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
-                mlflow_logger_factory=self.mlflow_logger_factory,
+                mlflow_logger=self.mlflow_logger,
                 on_eof=self._handle_EOF_message,    
+                report_builder=self.report_builder,
             )
 
             self.consumer = Consumer(

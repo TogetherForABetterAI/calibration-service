@@ -18,11 +18,14 @@ from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
 import numpy as np
 
-@patch("src.main.Middleware")
-@patch("src.server.listener.Middleware", autospec=True)
-def test_integration_main_runs_without_errors(mock_client_manager_middleware_cls, mock_listener_middleware_cls):
+from tests.mocks.fake_report_builder import FakeReportBuilder
+
+
+def test_integration_main_runs_without_errors():
     """Prueba de integración para verificar que main se ejecute sin errores usando FakeMiddleware."""
     
+
+
     server_config = Mock(
         service_name="calibration-service",
         container_name="calibration-service-container"
@@ -48,10 +51,9 @@ def test_integration_main_runs_without_errors(mock_client_manager_middleware_cls
         mlflow_config=mlflow_config,
         log_level="INFO"
     )
-
+    
     notification = [b'{"client_id": "client-001"}', b'{"client_id": "client-002"}', b'{"invalid_json": "missing_closing_bracket"}']
     fake_listener_middleware = FakeMiddleware(config=middleware_config, messages={CONNECTION_QUEUE_NAME: notification})
-    mock_listener_middleware_cls.return_value = fake_listener_middleware
 
     probs: Union[List[float], np.ndarray] = [0.005, 0.9, 0.005, 0.005, 0.005, 0.005, 0.005, 0.06, 0.01, 0.005]
 
@@ -73,21 +75,31 @@ def test_integration_main_runs_without_errors(mock_client_manager_middleware_cls
 
     fake_client_manager_middleware = FakeMiddleware(config=middleware_config, messages=
         {"labeled_queue": [inputs.SerializeToString()],
-         "replies_queue": [pred.SerializeToString()]})
+        "replies_queue": [pred.SerializeToString()]})
     
-    mock_client_manager_middleware_cls.return_value = fake_client_manager_middleware
 
     initialize_logging(fake_global_config.log_level.upper())
 
-    def middleware_factory(config):
-        return FakeMiddleware(config=config, messages=
-            {"labeled_queue": [inputs.SerializeToString()],
-             "replies_queue": [pred.SerializeToString()]})
+    def middleware_factory_fake(*args, **kwarg):
+        return fake_client_manager_middleware
     
-    def mlflow_logger_factory(client_id: str):
+    def mlflow_logger_factory(*args, **kwarg):
         return Mock()
+    
+    fake_report_builder = FakeReportBuilder()
+    def report_builder_factory(*args, **kwarg):
+        return fake_report_builder
 
-    server = Server(fake_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory, mlflow_logger_factory=mlflow_logger_factory)
+    server = Server(fake_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
     server.run()
     
+    
     assert fake_listener_middleware.close_connection_called == True
+    assert fake_listener_middleware.start_consuming_called == True
+    assert fake_listener_middleware.is_running() == False
+    assert len(fake_listener_middleware.msg_ack) == 3
+    assert fake_listener_middleware.msg_ack[0] == b'{"client_id": "client-001"}'
+    assert fake_listener_middleware.msg_ack[1] == b'{"client_id": "client-002"}'
+    assert fake_listener_middleware.msg_ack[2] == b'{"invalid_json": "missing_closing_bracket"}'
+    assert fake_report_builder.report_built == True
+    assert fake_report_builder.report_sent == True

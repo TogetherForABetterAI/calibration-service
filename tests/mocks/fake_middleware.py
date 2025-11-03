@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 
@@ -13,6 +14,11 @@ class FakeMiddleware:
         self.close_connection_called = False
         self.close_channel_called = False
         self.config = config
+        self.start_consuming_called = False
+        self.msg_ack = []
+        self.msg_nack = []
+        self._is_running = False
+        self.stop_consuming_called = False
 
     def create_channel(self, prefetch_count=1):
         self.channel = Mock()
@@ -44,22 +50,32 @@ class FakeMiddleware:
     ):
         pass
 
+    def run(self):
+        self.start_consuming_called = True
+        
     def basic_consume(self, channel, queue_name: str, callback_function):
         self.callbacks[queue_name] = callback_function
 
     def start_consuming(self, channel):
+        self.start_consuming_called = True
+        self._is_running = True
         for cb_queue_name, callback in self.callbacks.items():
             for msg_queue_name in self.messages:
                 if msg_queue_name in cb_queue_name:
                     for msg in self.messages[msg_queue_name]:
-                        callback(
-                            channel,
-                            Mock(),  # method
-                            Mock(),  # properties
-                            msg,  # body
-                        )
+                        try: 
+                            callback(
+                                channel,
+                                Mock(),  # method
+                                Mock(),  # properties
+                                msg,  # body
+                            )
+                            logging.info(f"Processed message from queue {msg_queue_name}: {msg}")   
+                            self.msg_ack.append(msg)
+                        except Exception as e:
+                            self.msg_nack.append(msg)
 
-        
+        self._is_running = False
 
     def unsuscribe_from_queue(self, channel, consumer_tag):
         pass
@@ -76,10 +92,11 @@ class FakeMiddleware:
         return wrapper
     
     def stop_consuming(self):
-        self.stop_consunming_called = True
+        self.stop_consuming_called = True
+        self._is_running = False
 
-    def delete_queue(self, channel, queue_name: str):
+    def delete_queue(self, channel, queue_name: str):   
         pass
 
     def is_running(self):
-        return True
+        return self._is_running
