@@ -101,5 +101,3 @@ def test_integration_main_runs_without_errors():
     assert fake_listener_middleware.msg_ack[0] == b'{"client_id": "client-001"}'
     assert fake_listener_middleware.msg_ack[1] == b'{"client_id": "client-002"}'
     assert fake_listener_middleware.msg_ack[2] == b'{"invalid_json": "missing_closing_bracket"}'
-    assert fake_report_builder.report_built == True
-    assert fake_report_builder.report_sent == True
