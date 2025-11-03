@@ -168,9 +168,7 @@ class Listener:
             self.lower_bound_reached_thread.start()
             
         if not self.shutdown_initiated: 
-            self.middleware.start_consuming(
-                self.channel
-            ) 
+            self.start_consumption()
  
         if self.shutdown_initiated:
             self.finish(shutdown=True)
@@ -230,7 +228,8 @@ class Listener:
             message_body = json.dumps(message).encode("utf-8")
             routing_key = "scale.up"
 
-            self.middleware.publish_message(
+            self.middleware.basic_send(
+                channel=self.channel,
                 exchange_name=COORDINATOR_EXCHANGE,
                 routing_key=routing_key,
                 message_body=message_body,

@@ -19,6 +19,7 @@ class FakeMiddleware:
         self.msg_nack = []
         self._is_running = False
         self.stop_consuming_called = False
+        self.messages_sent = []
 
     def create_channel(self, prefetch_count=1):
         self.channel = Mock()
@@ -59,7 +60,6 @@ class FakeMiddleware:
     def start_consuming(self, channel):
         self.start_consuming_called = True
         self._is_running = True
-        logging.info("self.messages: %s", self.messages)
         for cb_queue_name, callback in self.callbacks.items():
             for msg_queue_name in self.messages:
                 if msg_queue_name in cb_queue_name:
@@ -81,6 +81,15 @@ class FakeMiddleware:
     def unsuscribe_from_queue(self, channel, consumer_tag):
         pass
 
+    def basic_send(
+        self, 
+        channel,
+        exchange_name: str,
+        routing_key: str,
+        message_body: str,
+    ):
+        self.messages_sent.append((exchange_name, routing_key, message_body))
+        
     def close_channel(self, channel):
         self.close_channel_called = True
 

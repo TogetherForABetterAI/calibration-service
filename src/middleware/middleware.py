@@ -105,7 +105,7 @@ class Middleware:
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
         )
-
+    
     def basic_send(
         self, 
         channel,
