@@ -41,7 +41,7 @@ class Consumer:
         except Exception as e:
             self.logger.error(f"Error in Consumer for client {self.client_id}: {e}")
         finally:
-            self.shutdown()
+            self.graceful_finish()
 
     def _labeled_callback(self, ch, method, properties, body):
         """Wrapper callback for labeled queue messages."""
@@ -51,15 +51,12 @@ class Consumer:
         """Wrapper callback for replies queue messages."""
         self.replies_callback(ch, method, properties, body)
 
-    def stop_consuming(self):
-        self.middleware.stop_consuming()
-
-    def set_shutdown(self):
+    def handle_sigterm(self):
         self._shutdown_initiated = True
         if self.middleware.is_running():
-            self.stop_consuming()
+            self.middleware.stop_consuming()
 
-    def shutdown(self):
+    def graceful_finish(self):
         """Gracefully shutdown the consumer."""
         self.middleware.delete_queue(channel=self.channel, queue_name=self.labeled_queue_name)
         self.middleware.delete_queue(channel=self.channel, queue_name=self.replies_queue_name)

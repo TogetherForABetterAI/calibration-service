@@ -32,7 +32,7 @@ class BatchHandler:
             return
 
 
-    def stop_processing(self):
+    def handle_sigterm(self):
         """Stop processing and clean up resources."""
         self._mlflow_logger.end_run()
 

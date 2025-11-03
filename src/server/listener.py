@@ -1,4 +1,6 @@
 import logging
+import os
+import signal
 import threading
 import time
 from typing import Dict
@@ -56,13 +58,13 @@ class Listener:
 
         # Control de procesos cliente
         self._active_clients: Dict[str, ClientManager] = {}
-        self._clients_lock = threading.Lock()
+        self._active_clients_lock = threading.Lock()
 
         # Control de apagado seguro
         self.shutdown_initiated = False
 
         # Colas para comunicación entre hilos
-        self.remove_client_queue = Queue()
+        self.clients_to_remove_queue = Queue()
         self.clients_removed_queue = Queue()
         self.lower_bound_reached_queue = Queue()
 
@@ -75,7 +77,7 @@ class Listener:
     def _shutdown_all_clients(self):
         """Finaliza todos los procesos ClientManager activos."""
         self.logger.info("Shutting down all client managers...")
-        with self._clients_lock:
+        with self._active_clients_lock:
             for client_id, handler in list(self._active_clients.items()):
                 if handler.is_alive():
                     try:
@@ -90,7 +92,7 @@ class Listener:
         """Monitor the removal queue and remove finished clients from _active_clients"""
         while True:
             try:
-                client_id = self.remove_client_queue.get(
+                client_id = self.clients_to_remove_queue.get(
                     block=True
                 ) 
                 if client_id is None:
@@ -98,7 +100,7 @@ class Listener:
                     self.lower_bound_reached_queue.put(None)
                     break  
                 self._remove_handler(client_id)
-                # self.clients_removed_queue.put(client_id)
+                self.clients_removed_queue.put(client_id)
                 self.lower_bound_reached_queue.put(client_id)
             except:
                 continue
@@ -106,7 +108,7 @@ class Listener:
 
     def _get_active_clients_count(self) -> int:
         """Obtener el número actual de clientes activos (thread-safe)."""
-        with self._clients_lock:
+        with self._active_clients_lock:
             return len(self._active_clients)
 
     def start_consumption(self):
@@ -115,28 +117,34 @@ class Listener:
                 break
 
             self.middleware.start_consuming(self.channel)
-            client_id = self.clients_removed_queue.get(block=True)
-            if client_id is None:
-                break 
-        
 
-    def initial_lower_bound_checker(self):
+            while True:
+                client_id = self.clients_removed_queue.get(block=True)
+                if self.clients_removed_queue.empty():
+                   break
+
+            if self.shutdown_initiated or client_id is None:
+                break
+
+    def initial_lower_bound_reached(self):
         """Check if the number of active clients is below half the max_clients after initial timeout"""
         try:
             time.sleep(self.initial_timeout)
-            with self._clients_lock:
+            with self._active_clients_lock:
                 if not self.lower_bound_reached:
                     self.stop_consuming()
                     self.clients_removed_queue.put(None)
-                    return
-
+                    return False
+                
+            return True
         except Exception as e:
             self.logger.error(f"Error in initial lower bound check: {e}")
             return
         
     def lower_bound_checker(self):
         """Check if the number of active clients has dropped below half the max_clients"""
-        self.initial_lower_bound_checker()
+        if not self.initial_lower_bound_reached():
+            return
 
         while True:
             try:
@@ -160,6 +168,7 @@ class Listener:
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
+        logging.info("Listener starting consumption loop...")
         self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
         self.remove_client_monitor.start()
 
@@ -171,52 +180,56 @@ class Listener:
             self.start_consumption()
  
         if self.shutdown_initiated:
-            self.finish(shutdown=True)
+            self.finish()
             return
             
         logging.info("Listener stopping consumption...")
-        self.finish(shutdown=False)
+        self.finish()
         
 
     def _handle_new_client(self, ch, method, properties, body):
         """Launch a ClientManager process for each new client notification (all logic inside ClientManager)."""
-        try:
-            self.logger.info("Received new client connection notification")
+        self.logger.info("Received new client connection notification")
 
-            notification = json.loads(body.decode("utf-8"))
-            client_id = notification.get("client_id")
+        notification = json.loads(body.decode("utf-8"))
+        client_id = notification.get("client_id")
 
-            if not client_id:
-                self.logger.info(
-                    f"Client notification missing client_id: {notification}"
-                )
-                return  
-
-            client_manager = ClientManager(
-                client_id=client_id,
-                middleware=self.cm_middleware_factory(self.middleware_config),
-                remove_client_queue=self.remove_client_queue,
-                mlflow_logger=self.mlflow_logger_factory(client_id=client_id),
-                report_builder=self.report_builder_factory(client_id=client_id),
+        if not client_id:
+            self.logger.info(
+                f"Client notification missing client_id: {notification}"
             )
+            return  
 
-            self._add_client(client_id, client_manager)
-            active_clients_count = self._get_active_clients_count()
+        if not self.middleware.is_running():
+            self.logger.info(
+                f"Shutdown initiated, ignoring new client {client_id}"
+            )
+            return
+        
+        client_manager = ClientManager(
+            client_id=client_id,
+            middleware=self.cm_middleware_factory(self.middleware_config),
+            clients_to_remove_queue=self.clients_to_remove_queue,
+            mlflow_logger=self.mlflow_logger_factory(client_id=client_id),
+            report_builder=self.report_builder_factory(client_id=client_id),
+        )
+        logging.info(f"Created ClientManager for client {client_id}")
+        self._add_client(client_id, client_manager)
+        active_clients_count = self._get_active_clients_count()
 
-            if active_clients_count >= self.lower_bound_clients and not self.lower_bound_reached:
-                self.lower_bound_reached = True
-                
-            if active_clients_count >= self.upper_bound_clients:
-                self.middleware.stop_consuming(self.channel)
-                self._notify_coordinator_scale()
+        if active_clients_count >= self.lower_bound_clients and not self.lower_bound_reached:
+            logging.info("Lower bound of active clients reached.")
+            self.lower_bound_reached = True
+            
+        if active_clients_count >= self.upper_bound_clients:
+            logging.info("Upper bound of active clients reached, stopping consumption.")
+            self.middleware.stop_consuming(self.channel)
+            self._notify_coordinator_scale()
 
+        logging.info(f"Starting ClientManager for client {client_id}")
+        client_manager.start()
 
-            client_manager.start()
-
-        except Exception as e:
-            self.logger.error(f"Error handling new client message: {e}")
-            raise e  
-
+     
     def _notify_coordinator_scale(self):
         """Notify the coordinator exchange to scale up replicas."""
         try:
@@ -243,26 +256,26 @@ class Listener:
 
     def _remove_client(self, client_id: str):
         """Remove a finished client manager from the active clients dict"""
-        with self._clients_lock:
+        with self._active_clients_lock:
             if client_id in self._active_clients:
                 del self._active_clients[client_id]
                 self.logger.info(f"Removed ClientManager for client {client_id}")
 
     def _add_client(self, client_id: str, handler: ClientManager):
         """Add a new client manager to the active clients dict"""
-        with self._clients_lock:
+        with self._active_clients_lock:
             if client_id not in self._active_clients:
                 self._active_clients[client_id] = handler
                 self.logger.info(f"Added ClientManager for client {client_id}")
 
     def _remove_handler(self, client_id: str):
         """Remove a finished client manager from the active clients dict"""
-        with self._clients_lock:
+        with self._active_clients_lock:
             if client_id in self._active_clients:
                 del self._active_clients[client_id]
                 self.logger.info(f"Removed ClientManager for client {client_id}")
 
-    def join_all_clients(self, shutdown=False):
+    def terminate_all_clients(self):
         """Join all active ClientManager processes."""
         self.logger.info("Joining all client managers...")
         active_clients = list(self._active_clients.items())
@@ -272,26 +285,30 @@ class Listener:
         ) in active_clients:
             if handler.is_alive():
                 try:
-                    if shutdown:
-                        handler.terminate()  
+                    os.kill(handler.pid, signal.SIGTERM)
+                    logging.info(f"Terminated ClientManager for client {client_id}...")
                     handler.join()
                 except Exception as e:
                     self.logger.error(
                         f"Error shutting down ClientManager {client_id}: {e}"
                     )
 
-    def finish(self, shutdown=False):
+    def finish(self):
         """Finish listener operations before shutdown."""
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
         if self.replica_id != self.master_replica_id:
             self.lower_bound_reached_thread.join()
-        self.join_all_clients(shutdown)
-        self.remove_client_queue.put(None)  
-        self.remove_client_monitor.join()
 
-    def stop_consuming(self):
+
+    def handle_sigterm(self):
         """Signal to stop consuming messages and initiate shutdown."""
+        
         self.shutdown_initiated = True
         if self.middleware.is_running():
             self.middleware.stop_consuming()
+        
+        self.terminate_all_clients()
+        self.clients_to_remove_queue.put(None)  
+        self.remove_client_monitor.join()
+        

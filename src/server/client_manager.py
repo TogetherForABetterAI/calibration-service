@@ -11,7 +11,7 @@ class ClientManager(Process):
         self,
         client_id: str,
         middleware,
-        remove_client_queue: Queue,
+        clients_to_remove_queue: Queue,
         mlflow_logger,
         report_builder,
     ):
@@ -21,34 +21,36 @@ class ClientManager(Process):
         Args:
             client_id: The client ID (parsed by Listener before process creation)
             middleware_config: Middleware config object (NOT the middleware instance itself)
-            remove_client_queue: Queue to send removal requests to parent process
+            clients_to_remove_queue: Queue to send removal requests to parent process
         """
         super().__init__()
         self.logger = logging.getLogger(f"client-manager-{client_id}")
         self.logger.info(f"Initializing ClientManager for client {client_id}")
         self.client_id = client_id
         self.middleware = middleware
-        self.remove_client_queue = remove_client_queue
+        self.clients_to_remove_queue = clients_to_remove_queue
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
         self.mlflow_logger = mlflow_logger
         self.report_builder = report_builder
-        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+        logging.info(f"ClientManager for client {client_id} initialized")
 
 
     def _handle_shutdown_signal(self, signum, frame):
         """Handle SIGTERM signal for graceful shutdown."""
         self.logger.info(f"Received SIGTERM signal for client {self.client_id}")
         self.shutdown_initiated = True
-        self.consumer.set_shutdown()
-        self.batch_handler.stop_processing()
+        self.consumer.handle_sigterm()
+        self.batch_handler.handle_sigterm()
 
     def run(self):
         """
         Main process loop: parse message, setup queues, create consumer, and start processing.
         Each process creates its own RabbitMQ connection to avoid conflicts.
         """
+        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+
         try:
             logging.info(f"ClientManager process started for client {self.client_id}")
             self.batch_handler = BatchHandler(
@@ -69,8 +71,8 @@ class ClientManager(Process):
             if not self.shutdown_initiated:
                 self.consumer.start()  
         
-            if not self.shutdown_initiated:
-                self.remove_client_queue.put(self.client_id)
+            if not self.shutdown_initiated and self.clients_to_remove_queue:
+                self.clients_to_remove_queue.put(self.client_id)
                 
         except Exception as e:
             self.logger.error(f"Error setting up client {self.client_id}: {e}")
@@ -89,5 +91,5 @@ class ClientManager(Process):
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
         self.logger.info(f"Received EOF message for client {self.client_id}")
-        self.batch_handler.stop_processing()
-        self.consumer.stop_consuming()
+        self.batch_handler.handle_sigterm()
+        self.consumer.handle_sigterm()

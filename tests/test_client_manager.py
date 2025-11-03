@@ -14,7 +14,7 @@ def client_manager(mock_middleware):
         return Mock()
     def report_builder_factory(client_id: str):
         return Mock()
-    return ClientManager(client_id="client123", middleware=mock_middleware, remove_client_queue=None, mlflow_logger=mlflow_logger_factory(client_id="client123"), report_builder=report_builder_factory(client_id="client123"))
+    return ClientManager(client_id="client123", middleware=mock_middleware, clients_to_remove_queue=None, mlflow_logger=mlflow_logger_factory(client_id="client123"), report_builder=report_builder_factory(client_id="client123"))
 
 
 def test_initialization(client_manager):
@@ -22,7 +22,7 @@ def test_initialization(client_manager):
     assert client_manager.client_id == "client123"
     assert not client_manager.shutdown_initiated
     assert client_manager.middleware is not None
-    assert client_manager.remove_client_queue is None
+    assert client_manager.clients_to_remove_queue is None
 
 
 def test_handle_shutdown_signal_stops_all(client_manager):
@@ -33,8 +33,8 @@ def test_handle_shutdown_signal_stops_all(client_manager):
     client_manager._handle_shutdown_signal(None, None)
 
     assert client_manager.shutdown_initiated is True
-    client_manager.consumer.set_shutdown.assert_called_once()
-    client_manager.batch_handler.stop_processing.assert_called_once()
+    client_manager.consumer.handle_sigterm.assert_called_once()
+    client_manager.batch_handler.handle_sigterm.assert_called_once()
 
 
 @patch("src.server.client_manager.signal.signal")
@@ -47,14 +47,14 @@ def test_run_success(MockConsumer, MockBatchHandler, mock_signal, client_manager
     mock_batch = Mock()
     MockBatchHandler.return_value = mock_batch
 
-    client_manager.remove_client_queue = Mock()
+    client_manager.clients_to_remove_queue = Mock()
 
     client_manager.run()
 
     MockBatchHandler.assert_called_once()
     MockConsumer.assert_called_once()
     mock_consumer.start.assert_called_once()
-    client_manager.remove_client_queue.put.assert_called_once_with("client123")
+    client_manager.clients_to_remove_queue.put.assert_called_once_with("client123")
 
 
 @patch("src.server.client_manager.signal.signal")
@@ -94,5 +94,5 @@ def test_handle_EOF_message_stops_processing(client_manager):
 
     client_manager._handle_EOF_message()
 
-    client_manager.batch_handler.stop_processing.assert_called_once()
-    client_manager.consumer.stop_consuming.assert_called_once()
+    client_manager.batch_handler.handle_sigterm.assert_called_once()
+    client_manager.consumer.handle_sigterm.assert_called_once()

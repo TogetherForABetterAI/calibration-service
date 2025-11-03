@@ -46,7 +46,7 @@ def test_listener_initialization(listener):
     assert listener.middleware_config == {"mock": "config"}
     assert isinstance(listener._active_clients, dict)
     assert not listener.shutdown_initiated
-    assert listener.remove_client_queue is not None
+    assert listener.clients_to_remove_queue is not None
 
 
 def test_add_and_remove_client(listener):
@@ -93,17 +93,11 @@ def test_monitor_removals_removes_client(listener):
     listener._add_client(client_id, mock_client)
 
     # Agregamos una tarea de eliminación y una señal de fin
-    listener.remove_client_queue.put(client_id)
-    listener.remove_client_queue.put(None)
+    listener.clients_to_remove_queue.put(client_id)
+    listener.clients_to_remove_queue.put(None)
 
     thread = threading.Thread(target=listener._monitor_removals)
     thread.start()
     thread.join(timeout=1)
 
     assert client_id not in listener._active_clients
-
-def test_stop_consuming_sets_flag(listener):
-    """Verifica que stop_consuming marca el shutdown y llama al método del middleware."""
-    listener.middleware.stop_consuming = Mock()
-    listener.stop_consuming()
-    listener.middleware.stop_consuming.assert_called_once()

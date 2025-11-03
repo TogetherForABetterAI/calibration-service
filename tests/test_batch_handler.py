@@ -28,7 +28,7 @@ def test_initialization(handler):
 def test_stop_processing_calls_end_run(handler):
     """Verifica que stop_processing invoque end_run en el logger."""
     handler._mlflow_logger = Mock()
-    handler.stop_processing()
+    handler.handle_sigterm()
     handler._mlflow_logger.end_run.assert_called_once()
 
 

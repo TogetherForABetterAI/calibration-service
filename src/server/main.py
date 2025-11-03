@@ -41,8 +41,8 @@ class Server():
             f"Server initialized - ready to consume from {self.config.middleware_config.host}"
         )
         self._shutdown_received = False
-        signal.signal(signal.SIGINT, lambda s, f: self.stop())
-        signal.signal(signal.SIGTERM, lambda s, f: self.stop())
+        signal.signal(signal.SIGINT, lambda s, f: self.handle_sigterm())
+        signal.signal(signal.SIGTERM, lambda s, f: self.handle_sigterm())
 
     def run(self):
         """
@@ -52,22 +52,16 @@ class Server():
         if self._shutdown_received:
             self.logger.info("Shutdown already received, not starting listener")
             return
-        try:
-            self.listener.start()
-        except Exception as e:
-            self.logger.error(f"Failed to start listener: {e}")
-            raise e
-        finally:
-            self.stop()
-
-    def stop(self):
+        self.listener.start()
+       
+    def handle_sigterm(self):
         """
-        Gracefully stop the server by signaling the listener to shutdown.
+        Gracefully handle_sigterm the server by signaling the listener to shutdown.
         """
         self.logger.info("Initiating graceful server shutdown")
         try:
             self._shutdown_received = True
-            self.listener.stop_consuming()
+            self.listener.handle_sigterm()
             self.logger.info("Server shutdown completed")
         except Exception as e:
             self.logger.error(f"Error during server shutdown: {e}")
