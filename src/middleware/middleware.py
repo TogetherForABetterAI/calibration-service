@@ -11,6 +11,7 @@ class Middleware:
         self._consuming = False
         self.consumer_tag = None
         self._is_running = False
+        self._on_callback = True
         try:
             self.conn = pika.BlockingConnection(
                 pika.ConnectionParameters(
@@ -127,8 +128,12 @@ class Middleware:
                 f"with routing key '{routing_key}': {e}"
             )
             raise e 
+    
+    def on_callback(self):
+        return self._on_callback
         
     def callback_wrapper(self, callback_function):
+        self._on_callback = True
         def wrapper(ch, method, properties, body):
             try:
                 callback_function(ch, method, properties, body)
@@ -140,9 +145,9 @@ class Middleware:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
             if not self._is_running:
-                ch.basic_cancel(consumer_tag=method.consumer_tag)
-                ch.stop_consuming()
+                self.cancel_channel_consuming(ch)
 
+        self._on_callback = False
         return wrapper
 
     def start_consuming(self, channel):
@@ -167,6 +172,12 @@ class Middleware:
         except Exception as e:
             self.logger.error(f"action: rabbitmq_channel_close | result: fail | error: {e}")
 
+    def cancel_channel_consuming(self, channel):
+        if channel and channel.is_open:
+            self.logger.info(f"Cancelling consumer for channel: {channel}")
+            channel.basic_cancel(consumer_tag=self.consumer_tag)
+            self.channel.stop_consuming()
+            
     def stop_consuming(self):
         self._is_running = False
         self.logger.info("Stopped consuming messages")

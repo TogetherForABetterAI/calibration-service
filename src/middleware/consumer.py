@@ -55,6 +55,9 @@ class Consumer:
         self._shutdown_initiated = True
         if self.middleware.is_running():
             self.middleware.stop_consuming()
+        
+        if not self.middleware.on_callback():
+            self.middleware.cancel_channel_consuming(self.channel)
 
     def graceful_finish(self):
         """Gracefully shutdown the consumer."""

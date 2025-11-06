@@ -42,7 +42,10 @@ class Listener:
         self.logger = logger or logging.getLogger("listener")
         self.channel = channel
         self.consumer_tag = None
+
         self.lower_bound_reached = False
+        self.lower_bound_reached_lock = threading.Lock()
+        self.lower_bound_event = threading.Event()
 
         
         # Configuración de límites
@@ -74,6 +77,29 @@ class Listener:
 
         self.logger.info(f"Listener initialized for queue: {CONNECTION_QUEUE_NAME}")
 
+    def _monitor_removals(self):
+        """Monitor the removal queue and remove finished clients from _active_clients"""
+        while True:
+            try:
+                client_id = self.clients_to_remove_queue.get(block=True)
+                if client_id is None:
+                    self.clients_removed_queue.put(None)
+                    self.lower_bound_reached_queue.put(None)
+                    self.lower_bound_event.set()  # 🔹 desbloquear si estamos esperando
+                    break
+
+                self._remove_handler(client_id)
+                self.clients_removed_queue.put(client_id)
+
+                active = self._get_active_clients_count()
+                if active < self.lower_bound_clients:
+                    self.lower_bound_reached_queue.put(client_id)
+                    self.lower_bound_event.set()  # 🔹 señalar que bajó del límite
+
+            except Exception as e:
+                self.logger.error(f"Error in _monitor_removals: {e}")
+                continue
+
     def _shutdown_all_clients(self):
         """Finaliza todos los procesos ClientManager activos."""
         self.logger.info("Shutting down all client managers...")
@@ -88,22 +114,36 @@ class Listener:
                 else:
                     self.logger.debug(f"ClientManager {client_id} already stopped")
 
-    def _monitor_removals(self):
-        """Monitor the removal queue and remove finished clients from _active_clients"""
-        while True:
-            try:
-                client_id = self.clients_to_remove_queue.get(
-                    block=True
-                ) 
-                if client_id is None:
-                    self.clients_removed_queue.put(None)
-                    self.lower_bound_reached_queue.put(None)
-                    break  
-                self._remove_handler(client_id)
-                self.clients_removed_queue.put(client_id)
-                self.lower_bound_reached_queue.put(client_id)
-            except:
-                continue
+    def _wait_for_lower_bound(self, timeout: float) -> bool:
+        """
+        Espera a que el número de clientes activos supere el lower bound.
+        Retorna True si se cumple dentro del timeout, False si no.
+        """
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.shutdown_initiated:
+                return False
+
+            if self._get_active_clients_count() >= self.lower_bound_clients:
+                return True
+
+            if self.lower_bound_event.wait(timeout=1.0):
+                self.lower_bound_event.clear()
+
+        return False
+
+    def initial_lower_bound_reached(self):
+        """Verifica si se alcanza el lower bound inicial dentro del timeout."""
+        try:
+            if self._wait_for_lower_bound(self.initial_timeout):
+                with self.lower_bound_reached_lock:
+                    self.lower_bound_reached = True
+                return True
+            else:
+                return False
+        except Exception as e:
+            self.logger.error(f"Error in initial lower bound check: {e}")
+            return False
 
 
     def _get_active_clients_count(self) -> int:
@@ -126,45 +166,32 @@ class Listener:
             if self.shutdown_initiated or client_id is None:
                 break
 
-    def initial_lower_bound_reached(self):
-        """Check if the number of active clients is below half the max_clients after initial timeout"""
-        try:
-            time.sleep(self.initial_timeout)
-            with self._active_clients_lock:
-                if not self.lower_bound_reached:
-                    self.stop_consuming()
-                    self.clients_removed_queue.put(None)
-                    return False
-                
-            return True
-        except Exception as e:
-            self.logger.error(f"Error in initial lower bound check: {e}")
-            return
         
     def lower_bound_checker(self):
-        """Check if the number of active clients has dropped below half the max_clients"""
+        """Monitorea si los clientes activos bajan del límite inferior."""
         if not self.initial_lower_bound_reached():
+            self.logger.warning("Initial lower bound not reached, shutting down listener.")
+            self.handle_sigterm()
+            self.clients_removed_queue.put(None)
             return
 
-        while True:
+        while not self.shutdown_initiated:
             try:
-                client_id = self.lower_bound_reached_queue.get(
-                    block=True
-                )  
-                if client_id is None:
-                    break  
+                self.logger.debug("Waiting for lower bound event...")
+                if not self.lower_bound_event.wait(timeout=self.replica_timeout_seconds):
+                    continue  # nadie bajó el límite aún
 
-                time.sleep(self.replica_timeout_seconds)
-                active_clients_count = self._get_active_clients_count()
-
-                if active_clients_count <= self.lower_bound_clients:
-                    self.stop_consuming()
+                self.lower_bound_event.clear()
+                active = self._get_active_clients_count()
+                if active <= self.lower_bound_clients:
+                    self.logger.warning(f"Active clients below lower bound ({active}). Initiating shutdown.")
+                    self.handle_sigterm()
                     self.clients_removed_queue.put(None)
                     break
-            
+
             except Exception as e:
                 self.logger.error(f"Error in lower bound checker: {e}")
-                continue        
+                continue     
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
@@ -217,13 +244,15 @@ class Listener:
         self._add_client(client_id, client_manager)
         active_clients_count = self._get_active_clients_count()
 
-        if active_clients_count >= self.lower_bound_clients and not self.lower_bound_reached:
-            logging.info("Lower bound of active clients reached.")
-            self.lower_bound_reached = True
+        logging.info(f"Active clients count: {active_clients_count}")
+        with self.lower_bound_reached_lock:
+            if active_clients_count >= self.lower_bound_clients and not self.lower_bound_reached:
+                logging.info("Lower bound of active clients reached.")
+                self.lower_bound_reached = True
             
         if active_clients_count >= self.upper_bound_clients:
             logging.info("Upper bound of active clients reached, stopping consumption.")
-            self.middleware.stop_consuming(self.channel)
+            self.middleware.stop_consuming()
             self._notify_coordinator_scale()
 
         logging.info(f"Starting ClientManager for client {client_id}")
@@ -236,7 +265,7 @@ class Listener:
             message = {
                 "replica_id": self.replica_id,
                 "action": "scale_up",
-                "timestamp": time(),
+                "timestamp": time.time(),
             }
             message_body = json.dumps(message).encode("utf-8")
             routing_key = "scale.up"
@@ -303,10 +332,13 @@ class Listener:
 
     def handle_sigterm(self):
         """Signal to stop consuming messages and initiate shutdown."""
-        
+        logging.info("Listener received SIGTERM, initiating shutdown...")
         self.shutdown_initiated = True
         if self.middleware.is_running():
             self.middleware.stop_consuming()
+
+        if not self.middleware.on_callback():
+            self.middleware.cancel_channel_consuming(self.channel)
         
         self.terminate_all_clients()
         self.clients_to_remove_queue.put(None)  
