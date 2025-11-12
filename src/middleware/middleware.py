@@ -112,14 +112,14 @@ class Middleware:
         channel,
         exchange_name: str,
         routing_key: str,
-        message_body: str,
+        body: bytes,
         properties: pika.BasicProperties = None,
     ):
         try:
             channel.basic_publish(
                 exchange=exchange_name,
                 routing_key=routing_key,
-                body=message_body,
+                body=body,
                 properties=properties,
             )
         except Exception as e:

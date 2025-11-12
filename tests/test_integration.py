@@ -8,7 +8,7 @@ import threading
 from unittest.mock import Mock, patch
 from src.lib.config import CONNECTION_QUEUE_NAME
 from src.lib.logger import initialize_logging
-from src.proto import calibration_pb2, dataset_pb2
+from src.proto import calibration_pb2
 from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
 import numpy as np
@@ -57,16 +57,15 @@ def mock_cm_middleware(mock_global_config):
     pred.batch_index = 1
     pred.eof = True
 
-    fake_image = np.random.rand(1, 28, 28).astype(np.float32)
-    inputs = dataset_pb2.DataBatch()
-    inputs.batch_index = 1
-    inputs.is_last_batch = True
-    inputs.data = fake_image.tobytes()
-    inputs.labels.extend([1])
+    # fake_image = np.random.rand(1, 28, 28).astype(np.float32)
+    # inputs = dataset_pb2.DataBatch()
+    # inputs.batch_index = 1
+    # inputs.is_last_batch = True
+    # inputs.data = fake_image.tobytes()
+    # inputs.labels.extend([1])
 
     return FakeMiddleware(config=mock_global_config.middleware_config, messages=
-        {"labeled_queue": [inputs.SerializeToString()],
-        "replies_queue": [pred.SerializeToString()]}, processing_delay=0.1, module="client_manager")
+        {"replies_queue": [pred.SerializeToString()]}, processing_delay=0.1, module="client_manager")
 
 def test_integration_shutdown_runs_without_errors(mock_global_config, mock_cm_middleware):
     """Prueba de integración para verificar que el shutdown se ejecute sin errores usando FakeMiddleware."""

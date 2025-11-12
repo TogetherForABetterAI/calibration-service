@@ -264,14 +264,14 @@ class Listener:
                 "action": "scale_up",
                 "timestamp": time.time(),
             }
-            message_body = json.dumps(message).encode("utf-8")
+            message_body = json.dumps(message, ensure_ascii=False).encode("utf-8")
             routing_key = "scale.up"
 
             self.middleware.basic_send(
                 channel=self.channel,
                 exchange_name=COORDINATOR_EXCHANGE,
                 routing_key=routing_key,
-                message_body=message_body,
+                body=message_body,
             )
             self.logger.info(
                 f"Sent scale up notification to coordinator from replica {self.replica_id}"

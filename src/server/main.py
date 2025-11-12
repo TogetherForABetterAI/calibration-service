@@ -2,7 +2,7 @@ import logging
 import signal
 from middleware.middleware import Middleware
 from server.listener import Listener
-from lib.config import CONNECTION_QUEUE_NAME, DATASET_EXCHANGE
+from lib.config import CONNECTION_QUEUE_NAME
 
 
 class Server():

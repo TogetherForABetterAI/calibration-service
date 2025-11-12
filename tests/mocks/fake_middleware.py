@@ -39,7 +39,6 @@ class FakeMiddleware:
     def declare_queue(self, channel, queue_name: str, durable: bool = False):
         pass
 
-
     def declare_exchange(
         self,
         channel,
@@ -108,9 +107,9 @@ class FakeMiddleware:
         channel,
         exchange_name: str,
         routing_key: str,
-        message_body: str,
+        body: bytes,
     ):
-        self.messages_sent.append((exchange_name, routing_key, message_body))
+        self.messages_sent.append((exchange_name, routing_key, body))
         
     def close_channel(self, channel):
         self.close_channel_called = True

@@ -71,11 +71,11 @@ class BatchHandler:
             )
 
             probs = np.array([list(p.values) for p in message.pred], dtype=np.float32)
-            labels = np.array([lbl for lbl in message.labels], dtype=np.int32)
+            # labels = np.array([lbl for lbl in message.labels], dtype=np.int32)
 
             # scores = run_calibration_algorithm(probs) 
 
-            self._store_data(message.batch_index, probs, labels, message.eof)
+            self._store_data(message.batch_index, probs, np.array([1] * len(probs)), message.eof)
             if message.eof:
                 self.send_report()
                 self._on_eof() 
@@ -94,10 +94,7 @@ class BatchHandler:
         For now, we store both probs and labels together. But instead of storing them, we should process them immediately and
         store the scores array only.
         """
-
-        if batch_index in self._batches:
-            return
-
+        self._batches[batch_index] = {}
         self._batches[batch_index][DataType.PROBS] = probs
         self._batches[batch_index][DataType.LABELS] = labels
 

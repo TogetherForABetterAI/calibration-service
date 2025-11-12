@@ -1,5 +1,5 @@
 import logging
-from lib.config import DATASET_EXCHANGE, MLFLOW_EXCHANGE, REPLIES_EXCHANGE
+from lib.config import MLFLOW_EXCHANGE, REPLIES_EXCHANGE
 
 
 class Consumer:
@@ -10,7 +10,7 @@ class Consumer:
 
     def __init__(
         self,
-        middleware,  # object with host, port, credentials, etc.
+        middleware,
         client_id,
         replies_callback,
         logger=None,
