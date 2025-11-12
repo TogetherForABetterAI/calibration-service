@@ -19,7 +19,7 @@ def main():
     
     def report_builder_factory(client_id: str):
         from src.server.batch_handler import ReportBuilder
-        return ReportBuilder(client_id=client_id)
+        return ReportBuilder(client_id=client_id, email_sender=config.email_sender, email_password=config.email_password)
 
     server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory)
     server.run()

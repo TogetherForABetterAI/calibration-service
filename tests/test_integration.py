@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from src.lib.config import CONNECTION_QUEUE_NAME
 from src.lib.logger import initialize_logging
 from src.proto import calibration_pb2
+from src.service.report_builder import ReportBuilder
 from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
 import numpy as np
@@ -211,3 +212,37 @@ def test_does_not_reach_lower_bound_clients(mock_global_config, mock_cm_middlewa
     assert fake_listener_middleware.clients_handled_until_stop_consuming == mock_global_config.server_config.lower_bound_clients - 1
     assert fake_listener_middleware.clients_handled_after_stop_consuming == 0
 
+
+def test_build_report():
+    """Prueba de integración para verificar que el ReportBuilder genere un reporte sin errores."""
+    mock_client_id = "client-001"
+    fake_report_builder = ReportBuilder(client_id=mock_client_id, email_sender="tpfautomaticemails@gmail.com", email_password="epcgxspxtrsgybif")
+    y_true = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    y_probs = np.array([
+        [0.9, 0.05, 0.01, 0.01, 0.01, 0.01, 0.005, 0.005, 0.005, 0.005],
+        [0.1, 0.8, 0.05, 0.02, 0.01, 0.005, 0.003, 0.002, 0.002, 0.001],
+        [0.05, 0.1, 0.7, 0.1, 0.03, 0.01, 0.005, 0.003, 0.002, 0.002],
+        [0.01, 0.02, 0.1, 0.75, 0.05, 0.03, 0.02, 0.01, 0.01, 0.01],
+        [0.005, 0.01, 0.02, 0.1, 0.8, 0.05, 0.03, 0.02, 0.01, 0.005],
+        [0.005, 0.005, 0.01, 0.02, 0.1, 0.75, 0.05, 0.03, 0.02, 0.015],
+        [0.005, 0.003, 0.005, 0.01, 0.02, 0.1, 0.7, 0.05, 0.03, 0.017],
+        [0.005, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.75, 0.05, 0.017],
+        [0.005, 0.002, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.8, 0.017],
+        [0.005, 0.001, 0.002, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.851],
+        [0.9, 0.05, 0.01, 0.01, 0.01, 0.01, 0.005, 0.005, 0.005, 0.005],
+        [0.1, 0.8, 0.05, 0.02, 0.01, 0.005, 0.003, 0.002, 0.002, 0.001],
+        [0.05, 0.1, 0.7, 0.1, 0.03, 0.01, 0.005, 0.003, 0.002, 0.002],
+        [0.01, 0.02, 0.1, 0.75, 0.05, 0.03, 0.02, 0.01, 0.01, 0.01],
+        [0.005, 0.01, 0.02, 0.1, 0.8, 0.05, 0.03, 0.02, 0.01, 0.005],
+        [0.005, 0.005, 0.01, 0.02, 0.1, 0.75, 0.05, 0.03, 0.02, 0.015],
+        [0.005, 0.003, 0.005, 0.01, 0.02, 0.1, 0.7, 0.05, 0.03, 0.017],
+        [0.005, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.75, 0.05, 0.017],
+        [0.005, 0.002, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.8, 0.017],
+        [0.005, 0.001, 0.002, 0.002, 0.003, 0.005, 0.01, 0.02, 0.1, 0.851],
+    ])
+    try:
+        fake_report_builder.build_report(y_true, y_probs)
+        fake_report_builder.send_report("guldenjf@gmail.com")
+    except Exception as e:
+        pytest.fail(f"ReportBuilder.build_report() raised an exception: {e}")
+    

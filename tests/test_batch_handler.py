@@ -20,8 +20,8 @@ def test_initialization(handler):
 
 def test_store_data_creates_entry(handler):
     """Verifica que _store_data almacene correctamente los datos y loguee batch completo."""
-    probs = np.zeros((1, 28, 28))
-    labels = np.array([1])
+    probs = np.array([[0.1, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.8, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
+    labels = np.array([1, 0])
     handler._store_data(0, probs, labels, eof=False)
 
     assert 0 in handler._batches

@@ -43,6 +43,8 @@ class GlobalConfig:
         self.middleware_config = MiddlewareConfig()
         # self.mlflow_config = MlflowConfig()
         self.log_level = os.getenv("LOGGING_LEVEL", "INFO")
+        self.email_sender = os.getenv("EMAIL_SENDER", "default_sender@example.com")
+        self.email_password = os.getenv("EMAIL_PASSWORD", "default_password")
 
 
 def initialize_config():
