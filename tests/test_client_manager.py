@@ -10,11 +10,9 @@ def mock_middleware():
 
 @pytest.fixture
 def client_manager(mock_middleware):
-    def mlflow_logger_factory(client_id: str):
-        return Mock()
     def report_builder_factory(client_id: str):
         return Mock()
-    return ClientManager(client_id="client123", middleware=mock_middleware, clients_to_remove_queue=None, mlflow_logger=mlflow_logger_factory(client_id="client123"), report_builder=report_builder_factory(client_id="client123"))
+    return ClientManager(client_id="client123", middleware=mock_middleware, clients_to_remove_queue=None, report_builder=report_builder_factory(client_id="client123"))
 
 
 def test_initialization(client_manager):

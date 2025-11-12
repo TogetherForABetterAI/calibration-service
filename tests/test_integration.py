@@ -4,16 +4,10 @@ from multiprocessing import Queue
 import time
 from typing import Union
 import pytest
-import signal
 import threading
-import builtins
-from unittest.mock import Mock, patch, call
-from src.lib.config import CONNECTION_QUEUE_NAME, GlobalConfig, ServerConfig, initialize_config
+from unittest.mock import Mock, patch
+from src.lib.config import CONNECTION_QUEUE_NAME
 from src.lib.logger import initialize_logging
-from src.main import (
-    main,
-)
-from src.middleware.middleware import Middleware
 from src.proto import calibration_pb2, dataset_pb2
 from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
@@ -42,16 +36,9 @@ def mock_global_config():
         max_retries=3
     )
     
-    mlflow_config = Mock(
-        artifacts_path="artifacts",
-        experiment_name="Global Calibration Experiment",
-        tracking_uri="http://mlflow:5000"
-    )
-    
     fake_global_config = Mock(
         server_config=server_config,
         middleware_config=middleware_config,
-        mlflow_config=mlflow_config,
         log_level="INFO"
     )
     
@@ -94,14 +81,11 @@ def test_integration_shutdown_runs_without_errors(mock_global_config, mock_cm_mi
     def middleware_factory_fake(*args, **kwarg):
         return mock_cm_middleware
     
-    def mlflow_logger_factory(*args, **kwarg):
-        return Mock()
-    
     fake_report_builder = FakeReportBuilder()
     def report_builder_factory(*args, **kwarg):
         return fake_report_builder
 
-    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
+    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, report_builder_factory=report_builder_factory)
     server_thread = threading.Thread(target=server.run)
     server_thread.start()
     
@@ -136,13 +120,10 @@ def test_exceed_upper_bound_clients(mock_global_config, mock_cm_middleware):
     def middleware_factory_fake(*args, **kwarg):
         return mock_cm_middleware
     
-    def mlflow_logger_factory(*args, **kwarg):
-        return Mock()
-    
     def report_builder_factory(*args, **kwarg):
         return FakeReportBuilder()
 
-    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
+    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, report_builder_factory=report_builder_factory)
     server_thread = threading.Thread(target=server.run)
     server_thread.start()
     
@@ -178,13 +159,10 @@ def test_exceed_upper_bound_clients_and_continue_handling_connections(mock_globa
     def middleware_factory_fake(*args, **kwarg):
         return mock_cm_middleware
     
-    def mlflow_logger_factory(*args, **kwarg):
-        return Mock()
-    
     def report_builder_factory(*args, **kwarg):
         return FakeReportBuilder()
 
-    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
+    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, report_builder_factory=report_builder_factory)
     server_thread = threading.Thread(target=server.run)
     server_thread.start()
     
@@ -220,13 +198,10 @@ def test_does_not_reach_lower_bound_clients(mock_global_config, mock_cm_middlewa
     def middleware_factory_fake(*args, **kwarg):
         return mock_cm_middleware
     
-    def mlflow_logger_factory(*args, **kwarg):
-        return Mock()
-    
     def report_builder_factory(*args, **kwarg):
         return FakeReportBuilder()
 
-    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, mlflow_logger_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
+    server = Server(mock_global_config, middleware_cls=fake_listener_middleware, cm_middleware_factory=middleware_factory_fake, report_builder_factory=report_builder_factory)
     server_thread = threading.Thread(target=server.run)
     server_thread.start()
     

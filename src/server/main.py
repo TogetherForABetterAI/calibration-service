@@ -10,7 +10,7 @@ class Server():
     Server handles RabbitMQ server operations for client notifications.
     """
 
-    def __init__(self, config, middleware_cls, cm_middleware_factory, mlflow_logger_factory, report_builder_factory):
+    def __init__(self, config, middleware_cls, cm_middleware_factory, report_builder_factory):
         self.config = config
         self.logger = logging.getLogger("calibration-server")
         self.logger.info("Initializing Calibration Server")
@@ -32,7 +32,6 @@ class Server():
             master_replica_id=self.config.server_config.master_replica_id,
             initial_timeout=self.config.server_config.initial_timeout,
             cm_middleware_factory=cm_middleware_factory,
-            mlflow_logger_factory=mlflow_logger_factory,
             report_builder_factory=report_builder_factory,
             logger=self.logger
         )

@@ -6,6 +6,7 @@ REPLIES_EXCHANGE = "replies_exchange"
 CONNECTION_EXCHANGE = "new_connections"
 CONNECTION_QUEUE_NAME = "calibration_service_connections_queue"
 COORDINATOR_EXCHANGE = "coordinator_exchange"
+MLFLOW_EXCHANGE = "mlflow_exchange"
 
 class ServerConfig:
     def __init__(self):
@@ -28,20 +29,20 @@ class MiddlewareConfig:
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
 
 
-class MlflowConfig:
-    def __init__(self):
-        self.artifacts_path = os.getenv("ARTIFACTS_PATH", "artifacts")
-        self.experiment_name = os.getenv(
-            "MLFLOW_EXPERIMENT_NAME", "Global Calibration Experiment"
-        )
-        self.tracking_uri = os.getenv("TRACKING_URI_MLFLOW", "http://mlflow:5000")
+# class MlflowConfig:
+#     def __init__(self):
+#         self.artifacts_path = os.getenv("ARTIFACTS_PATH", "artifacts")
+#         self.experiment_name = os.getenv(
+#             "MLFLOW_EXPERIMENT_NAME", "Global Calibration Experiment"
+#         )
+#         self.tracking_uri = os.getenv("TRACKING_URI_MLFLOW", "http://mlflow:5000")
 
 
 class GlobalConfig:
     def __init__(self):
         self.server_config = ServerConfig()
         self.middleware_config = MiddlewareConfig()
-        self.mlflow_config = MlflowConfig()
+        # self.mlflow_config = MlflowConfig()
         self.log_level = os.getenv("LOGGING_LEVEL", "INFO")
 
 

@@ -22,7 +22,6 @@ class Listener:
         cm_middleware_factory,         
         replica_id,
         replica_timeout_seconds,
-        mlflow_logger_factory, 
         report_builder_factory, 
         master_replica_id=1,
         initial_timeout=30, 
@@ -57,7 +56,6 @@ class Listener:
         # Client manager factory
         self.cm_middleware_factory = cm_middleware_factory
         self.report_builder_factory = report_builder_factory
-        self.mlflow_logger_factory = mlflow_logger_factory
 
         # Control de procesos cliente
         self._active_clients: Dict[str, ClientManager] = {}
@@ -237,7 +235,6 @@ class Listener:
             client_id=client_id,
             middleware=self.cm_middleware_factory(self.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
-            mlflow_logger=self.mlflow_logger_factory(client_id=client_id),
             report_builder=self.report_builder_factory(client_id=client_id),
         )
         logging.info(f"Created ClientManager for client {client_id}")

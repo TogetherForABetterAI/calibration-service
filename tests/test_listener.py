@@ -19,9 +19,6 @@ def mock_channel():
 def cm_middleware_factory(config):
     return Mock()
 
-def mlflow_logger_factory(client_id: str):
-    return Mock()
-
 def report_builder_factory(client_id: str):
     return Mock()
 @pytest.fixture
@@ -29,7 +26,6 @@ def listener(mock_middleware, mock_channel):
     return Listener(middleware=mock_middleware, 
                     channel=mock_channel, 
                     cm_middleware_factory=cm_middleware_factory, 
-                    mlflow_logger_factory=mlflow_logger_factory, 
                     report_builder_factory=report_builder_factory,
                     upper_bound_clients=5,
                     lower_bound_clients=2,

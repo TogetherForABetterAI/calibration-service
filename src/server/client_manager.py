@@ -3,6 +3,7 @@ from multiprocessing import Process, Queue
 import signal
 from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
+from src.lib.config import MLFLOW_EXCHANGE
 from src.middleware.middleware import Middleware
 
 
@@ -12,7 +13,6 @@ class ClientManager(Process):
         client_id: str,
         middleware,
         clients_to_remove_queue: Queue,
-        mlflow_logger,
         report_builder,
     ):
         """
@@ -32,7 +32,6 @@ class ClientManager(Process):
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
-        self.mlflow_logger = mlflow_logger
         self.report_builder = report_builder
         logging.info(f"ClientManager for client {client_id} initialized")
 
@@ -55,7 +54,6 @@ class ClientManager(Process):
             logging.info(f"ClientManager process started for client {self.client_id}")
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
-                mlflow_logger=self.mlflow_logger,
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
             )
@@ -63,7 +61,6 @@ class ClientManager(Process):
             self.consumer = Consumer(
                 middleware=self.middleware,
                 client_id=self.client_id,
-                labeled_callback=self._handle_labeled_message,
                 replies_callback=self._handle_replies_message,
                 logger=self.logger,
             )
@@ -77,16 +74,17 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error setting up client {self.client_id}: {e}")
 
-    # Define callbacks that call BatchHandler methods
-    def _handle_labeled_message(self, ch, method, properties, body):
-        """Callback for labeled queue - calls BatchHandler._handle_data_message"""
-        self.logger.info(f"Received labeled message for client {self.client_id}")
-        self.batch_handler._handle_data_message(body)
-
     def _handle_replies_message(self, ch, method, properties, body):
         """Callback for replies queue - calls BatchHandler._handle_probability_message"""
         self.logger.info(f"Received replies message for client {self.client_id}")
         self.batch_handler._handle_probability_message(body)
+        self.middleware.basic_send(
+            channel=ch,
+            exchange_name=MLFLOW_EXCHANGE,
+            routing_key=f"{self.client_id}.mlflow",
+            body=body
+        )
+        self.logger.info(f"Forwarded replies message to MLflow exchange for client {self.client_id}")
 
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""

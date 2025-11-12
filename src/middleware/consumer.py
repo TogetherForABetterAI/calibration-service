@@ -1,5 +1,5 @@
 import logging
-from lib.config import DATASET_EXCHANGE, REPLIES_EXCHANGE
+from lib.config import DATASET_EXCHANGE, MLFLOW_EXCHANGE, REPLIES_EXCHANGE
 
 
 class Consumer:
@@ -12,7 +12,6 @@ class Consumer:
         self,
         middleware,  # object with host, port, credentials, etc.
         client_id,
-        labeled_callback,
         replies_callback,
         logger=None,
     ):
@@ -20,13 +19,12 @@ class Consumer:
         self.channel = self.middleware.create_channel(prefetch_count=1)  # new channel
         self.client_id = client_id
         self.logger = logger or logging.getLogger(f"consumer-{client_id}")
-        self.labeled_queue_name = f"{client_id}_labeled_queue"
         self.replies_queue_name = f"{client_id}_replies_queue"
-        self.routing_key_labeled = f"{client_id}.labeled"
         self.routing_key_replies = f"{client_id}"
-        self.labeled_exchange = DATASET_EXCHANGE
+        self.mlflow_queue_name = f"{client_id}_mlflow_queue"
+        self.routing_key_mlflow = f"{client_id}.mlflow"
+        self.mlflow_exchange = MLFLOW_EXCHANGE
         self.replies_exchange = REPLIES_EXCHANGE
-        self.labeled_callback = labeled_callback  # Callback for labeled queue
         self.replies_callback = replies_callback  # Callback for replies queue
         self._shutdown_initiated = False
 
@@ -43,10 +41,6 @@ class Consumer:
         finally:
             self.graceful_finish()
 
-    def _labeled_callback(self, ch, method, properties, body):
-        """Wrapper callback for labeled queue messages."""
-        self.labeled_callback(ch, method, properties, body)
-
     def _replies_callback(self, ch, method, properties, body):
         """Wrapper callback for replies queue messages."""
         self.replies_callback(ch, method, properties, body)
@@ -61,30 +55,29 @@ class Consumer:
 
     def graceful_finish(self):
         """Gracefully shutdown the consumer."""
-        self.middleware.delete_queue(channel=self.channel, queue_name=self.labeled_queue_name)
         self.middleware.delete_queue(channel=self.channel, queue_name=self.replies_queue_name)
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()
         self.logger.info(f"Consumer shutdown complete for client {self.client_id}")
 
     def _setup_queues(self):
-        # Declare and bind labeled queue to DATASET_EXCHANGE
+        # Declare and bind mlflow queue to MLFLOW_EXCHANGE
         self.middleware.declare_exchange(
             self.channel,
-            self.labeled_exchange,
+            self.mlflow_exchange,
             exchange_type="direct",
             durable=False,
         )
 
         self.middleware.declare_queue(
-            self.channel, self.labeled_queue_name, durable=False
+            self.channel, self.mlflow_queue_name, durable=False
         )
 
         self.middleware.bind_queue(
             self.channel,
-            self.labeled_queue_name,
-            self.labeled_exchange,
-            self.routing_key_labeled,
+            self.mlflow_queue_name,
+            self.mlflow_exchange,
+            self.routing_key_mlflow,
         )
 
         # Declare and bind replies queue to REPLIES_EXCHANGE
@@ -104,10 +97,6 @@ class Consumer:
             self.replies_queue_name,
             self.replies_exchange,
             self.routing_key_replies,
-        )
-
-        self.middleware.basic_consume(
-            self.channel, self.labeled_queue_name, self._labeled_callback
         )
 
         self.middleware.basic_consume(

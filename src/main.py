@@ -17,18 +17,11 @@ def main():
     def middleware_factory(config):
         return Middleware(config=config)
     
-    def mlflow_logger_factory(client_id: str):
-        from src.service.mlflow_logger import MlflowLogger
-        from src.server.client_manager import MlflowClient
-
-        mlflow_client = MlflowClient()
-        return MlflowLogger(mlflow_client=mlflow_client, client_id=client_id)
-    
     def report_builder_factory(client_id: str):
         from src.server.batch_handler import ReportBuilder
         return ReportBuilder(client_id=client_id)
 
-    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, mlflow_client_factory=mlflow_logger_factory, report_builder_factory=report_builder_factory)
+    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory)
     server.run()
     
 
