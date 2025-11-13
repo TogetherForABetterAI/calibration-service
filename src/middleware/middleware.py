@@ -1,7 +1,7 @@
 import logging
 import pika
 
-from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
+from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE, MLFLOW_EXCHANGE
 
 
 class Middleware:
@@ -38,7 +38,7 @@ class Middleware:
             channel, connection_exchange, exchange_type="fanout", durable=durable
         )
         self.declare_exchange(
-            channel, coordinator_exchange, exchange_type="fanout", durable=durable
+            channel, coordinator_exchange, exchange_type="direct", durable=durable
         )
 
         # Declare the queue

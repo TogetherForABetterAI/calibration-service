@@ -97,8 +97,11 @@ class ReportBuilder:
         story.append(Paragraph("Informe de Evaluación Metrológica de Modelo de Inteligencia Artificial", self._styles["CenterTitle"]))
         story.append(Spacer(1, 1*cm))
         story.append(Paragraph(f"Cliente: <b>{self._client_id}</b>", self._styles["Normal"]))
-        story.append(Paragraph("Fecha de evaluación: <b>2025-11-11</b>", self._styles["Normal"]))
-        story.append(Paragraph("Código de informe: <b>EVAL-INTI-XXX/2025</b>", self._styles["Normal"]))
+        today = np.datetime64('today').astype(str)
+        year, month, day = today.split('-')
+        client_id_short = self._client_id.split('_')[0]
+        story.append(Paragraph(f"Fecha de evaluación: <b>{today}</b>", self._styles["Normal"]))
+        story.append(Paragraph(f"Código de informe: <b>EVAL-INTI-{client_id_short}/{year}</b>", self._styles["Normal"]))
         story.append(PageBreak())
 
         # --- MÉTRICAS ---
@@ -137,8 +140,7 @@ class ReportBuilder:
 
         if cm_img_path and os.path.exists(cm_img_path):
             story.append(Image(cm_img_path, width=12*cm, height=8*cm))
-        else:
-            story.append(Paragraph("<i>No se pudo generar la matriz de confusión debido a un error o datos insuficientes.</i>", self._styles["Normal"]))
+            
         story.append(Spacer(1, 0.5*cm))
 
         # --- HISTOGRAMA DE CONFIANZA ---

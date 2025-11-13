@@ -27,16 +27,6 @@ class MiddlewareConfig:
         self.password = os.getenv("RABBITMQ_PASS", "guest")
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
 
-
-# class MlflowConfig:
-#     def __init__(self):
-#         self.artifacts_path = os.getenv("ARTIFACTS_PATH", "artifacts")
-#         self.experiment_name = os.getenv(
-#             "MLFLOW_EXPERIMENT_NAME", "Global Calibration Experiment"
-#         )
-#         self.tracking_uri = os.getenv("TRACKING_URI_MLFLOW", "http://mlflow:5000")
-
-
 class GlobalConfig:
     def __init__(self):
         self.server_config = ServerConfig()
