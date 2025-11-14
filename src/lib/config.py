@@ -6,6 +6,7 @@ CONNECTION_EXCHANGE = "new_connections"
 CONNECTION_QUEUE_NAME = "calibration_service_connections_queue"
 COORDINATOR_EXCHANGE = "coordinator_exchange"
 MLFLOW_EXCHANGE = "mlflow_exchange"
+MLFLOW_ROUTING_KEY = "mlflow.key"
 
 class ServerConfig:
     def __init__(self):

@@ -140,7 +140,7 @@ class ReportBuilder:
 
         if cm_img_path and os.path.exists(cm_img_path):
             story.append(Image(cm_img_path, width=12*cm, height=8*cm))
-            
+
         story.append(Spacer(1, 0.5*cm))
 
         # --- HISTOGRAMA DE CONFIANZA ---
@@ -165,6 +165,7 @@ class ReportBuilder:
         else:
             story.append(Paragraph("<i>No se pudo generar el histograma de confianza.</i>", self._styles["Normal"]))
         story.append(Spacer(1, 0.5*cm))
+
 
         # --- CONCLUSIONES ---
         story.append(Paragraph("4. Conclusiones", self._styles["Heading1Blue"]))

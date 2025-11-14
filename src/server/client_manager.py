@@ -56,6 +56,7 @@ class ClientManager(Process):
                 client_id=self.client_id,
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
+                middleware=self.middleware,
             )
 
             self.consumer = Consumer(
@@ -77,14 +78,7 @@ class ClientManager(Process):
     def _handle_replies_message(self, ch, method, properties, body):
         """Callback for replies queue - calls BatchHandler._handle_probability_message"""
         self.logger.info(f"Received replies message for client {self.client_id}")
-        self.batch_handler._handle_probability_message(body)
-        self.middleware.basic_send(
-            channel=ch,
-            exchange_name=MLFLOW_EXCHANGE,
-            routing_key=f"{self.client_id}.mlflow",
-            body=body
-        )
-        self.logger.info(f"Forwarded replies message to MLflow exchange for client {self.client_id}")
+        self.batch_handler._handle_probability_message(ch, body)
 
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""

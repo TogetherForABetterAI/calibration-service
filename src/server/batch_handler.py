@@ -1,8 +1,9 @@
 import logging
 from typing import Dict
 import numpy as np
-from proto import calibration_pb2
+from proto import calibration_pb2, mlflow_probs_pb2
 from lib.data_types import DataType
+from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
 
 
 class BatchHandler:
@@ -10,12 +11,14 @@ class BatchHandler:
         self,
         client_id: str,
         on_eof,
-        report_builder
+        report_builder,
+        middleware,
     ):
         self.client_id = client_id
         self._report_builder = report_builder
         self._on_eof = on_eof
         self._batches: Dict[int, Dict] = {}
+        self._middleware = middleware
         """
         The line above should change to store only scores instead of probabilities per class and labels.
         self._batches: Dict[int, np.ndarray] = {}
@@ -59,7 +62,7 @@ class BatchHandler:
 
     #     return images.reshape((num_images, *image_shape))
 
-    def _handle_probability_message(self, body):
+    def _handle_probability_message(self, ch, body):
         """Handle probability messages from the calibration queue."""
 
         try:
@@ -76,6 +79,27 @@ class BatchHandler:
             # scores = run_calibration_algorithm(probs) 
 
             self._store_data(message.batch_index, probs, np.array([1] * len(probs)), message.eof)
+
+            # send mlflow logging message
+
+            mlflow_msg = mlflow_probs_pb2.MlflowProbs()
+            for p in message.pred:
+                prob = mlflow_probs_pb2.PredictionList()
+                prob.values.extend(p.values)
+                mlflow_msg.pred.append(prob)
+
+            mlflow_msg.batch_index = message.batch_index
+            mlflow_msg.eof = message.eof
+            mlflow_msg.client_id = self.client_id
+            mlflow_body = mlflow_msg.SerializeToString()
+
+            self._middleware.basic_send(
+                channel=ch,  
+                exchange_name=MLFLOW_EXCHANGE,
+                routing_key=MLFLOW_ROUTING_KEY,
+                body=mlflow_body,
+            )
+        
             if message.eof:
                 self.send_report()
                 self._on_eof() 

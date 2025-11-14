@@ -2,14 +2,13 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch
 from src.server.batch_handler import BatchHandler
-from lib.data_types import DataType
 
 def report_builder_factory(client_id: str):
     return Mock()   
 
 @pytest.fixture
 def handler():
-    return BatchHandler(client_id="client1", report_builder=report_builder_factory(client_id="client1"), on_eof=Mock())
+    return BatchHandler(client_id="client1", report_builder=report_builder_factory(client_id="client1"), on_eof=Mock(), middleware=Mock())
 
 
 def test_initialization(handler):
@@ -27,41 +26,6 @@ def test_store_data_creates_entry(handler):
     assert 0 in handler._batches
 
 
-# def test_process_input_data_valid(handler):
-#     """Verifica que _process_input_data convierta bytes a np.array con forma (n,1,28,28)."""
-#     dummy = np.random.rand(28 * 28).astype(np.float32).tobytes()
-#     out = handler._process_input_data(dummy)
-#     assert out.shape == (1, 1, 28, 28)
-
-
-# def test_process_input_data_invalid_size(handler):
-#     """Verifica que _process_input_data lance ValueError si el tamaño no coincide."""
-#     dummy = np.random.rand(10).astype(np.float32).tobytes()
-#     with pytest.raises(ValueError):
-#         handler._process_input_data(dummy)
-
-
-# @patch("src.server.batch_handler.dataset_pb2.DataBatch")
-# def test_handle_data_message_parsing(MockDataBatch, handler):
-#     """Verifica que _handle_data_message procese correctamente un mensaje."""
-#     mock_msg = Mock()
-#     mock_msg.data = b"0" * (28 * 28 * 4)
-#     mock_msg.batch_index = 0
-#     mock_msg.is_last_batch = True
-#     mock_msg.labels = [1, 0, 1]
-#     MockDataBatch.return_value = mock_msg
-
-#     handler.store_input_data = Mock()
-#     handler._send_report = Mock()
-#     handler._on_eof = Mock()
-
-#     handler._handle_data_message(b"body")
-
-#     mock_msg.ParseFromString.assert_called_once_with(b"body")
-#     handler.store_input_data.assert_called_once()
-#     assert handler._labeled_eof is True
-
-
 @patch("src.server.batch_handler.calibration_pb2.Predictions")
 def test_handle_probability_message(MockPredictions, handler):
     """Verifica que _handle_probability_message procese correctamente un mensaje."""
@@ -74,8 +38,9 @@ def test_handle_probability_message(MockPredictions, handler):
     handler._store_data = Mock()
     handler._send_report = Mock()
     handler._on_eof = Mock()
+    ch = Mock()
 
-    handler._handle_probability_message(b"body")
+    handler._handle_probability_message(ch, b"body")
 
     mock_msg.ParseFromString.assert_called_once_with(b"body")
     handler._store_data.assert_called_once()
