@@ -8,10 +8,8 @@ message PredictionList {
 
 message MlflowProbs {
   repeated PredictionList pred = 1;
-  repeated int32 labels = 2;
-  bool eof = 3;
-  int32 batch_index = 4;
-  string client_id = 5;
+  int32 batch_index = 2;
+  string client_id = 3;
 }
 
 
