@@ -1,9 +1,10 @@
 import logging
 from typing import Dict
 import numpy as np
-from proto import calibration_pb2, mlflow_probs_pb2
-from lib.data_types import DataType
+from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
+from src.lib.data_types import DataType
 from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
+from src.service.report_builder import ReportBuilder
 
 
 class BatchHandler:
@@ -16,8 +17,11 @@ class BatchHandler:
     ):
         self.client_id = client_id
         self._report_builder = report_builder
-        self._on_eof = on_eof
+        self._labeled_eof = False
+        self._replies_eof = False
         self._batches: Dict[int, Dict] = {}
+        self._on_eof = on_eof
+        
         self._middleware = middleware
         """
         The line above should change to store only scores instead of probabilities per class and labels.
@@ -50,19 +54,8 @@ class BatchHandler:
         self._report_builder.send_report()
         logging.info(f"action: send_report | result: success")
 
-    # def _process_input_data(self, data):
-    #     image_shape = (1, 28, 28)
-    #     image_dtype = np.float32
-    #     image_size = np.prod(image_shape)
-    #     images = np.frombuffer(data, dtype=image_dtype)
-    #     num_floats = images.size
-    #     num_images = num_floats // image_size
-    #     if num_images * image_size != num_floats:
-    #         raise ValueError("Incompatible data size for image")
 
-    #     return images.reshape((num_images, *image_shape))
-
-    def _handle_probability_message(self, ch, body):
+    def _handle_predictions_message(self, ch, body):
         """Handle probability messages from the calibration queue."""
 
         try:
@@ -78,7 +71,9 @@ class BatchHandler:
 
             # scores = run_calibration_algorithm(probs) 
 
-            self._store_data(message.batch_index, probs, np.array([1] * len(probs)), message.eof)
+            self.store_outputs(
+                message.batch_index, probs, message.eof
+            )
 
             # send mlflow logging message
 
@@ -89,7 +84,6 @@ class BatchHandler:
                 mlflow_msg.pred.append(prob)
 
             mlflow_msg.batch_index = message.batch_index
-            mlflow_msg.eof = message.eof
             mlflow_msg.client_id = self.client_id
             mlflow_body = mlflow_msg.SerializeToString()
 
@@ -99,7 +93,7 @@ class BatchHandler:
                 routing_key=MLFLOW_ROUTING_KEY,
                 body=mlflow_body,
             )
-        
+
             if message.eof:
                 self.send_report()
                 self._on_eof() 
@@ -109,21 +103,78 @@ class BatchHandler:
                 f"Error handling probability message for client {self.client_id}: {e}"
             )
             raise e
+        
+    def _handle_inputs_message(self, ch, body):
+        """Handle inputs messages from the inputs queue."""
+        try:
+            message = dataset_service_pb2.DataBatchLabeled()
+            message.ParseFromString(body)
+            images = self._process_input_data(message.data)
+
+            self.store_input_data(
+                message.batch_index, images, message.is_last_batch, list(message.labels)
+            )
+
+            if message.is_last_batch:
+                self._labeled_eof = True
+
+            if self._labeled_eof and self._replies_eof:
+                self._send_report()
+
+            if self._on_eof and self._labeled_eof and self._replies_eof:
+                self._on_eof()  # Received both EOFs, time to finish consuming
+        except Exception as e:
+            logging.error(
+                f"Error handling data message for client {self.client_id}: {e}"
+            )
+            raise e
+        
+    def _process_input_data(self, data):
+        image_shape = (1, 28, 28)
+        image_dtype = np.float32
+        image_size = np.prod(image_shape)
+        images = np.frombuffer(data, dtype=image_dtype)
+        num_floats = images.size
+        num_images = num_floats // image_size
+        if num_images * image_size != num_floats:
+            raise ValueError("Incompatible data size for image")
+
+        return images.reshape((num_images, *image_shape))
+
+    def store_outputs(self, batch_index: int, probs: np.ndarray, is_last_batch: bool):
+        self._store_data(batch_index, DataType.PROBS, probs, is_last_batch)
+
+    def store_input_data(
+        self,
+        batch_index: int,
+        inputs: np.ndarray,
+        is_last_batch: bool,
+        labels: np.ndarray,
+    ):
+        self._store_data(batch_index, DataType.INPUTS, inputs, is_last_batch)
+        self._store_data(batch_index, DataType.LABELS, labels, is_last_batch)
 
     def _store_data(
-        self, batch_index: int, probs: np.ndarray, labels: np.ndarray, eof: bool
+        self, batch_index: int, kind: DataType, data: np.ndarray, eof: bool
     ):
-        """
-        Store received data in the appropriate batch.
-        For now, we store both probs and labels together. But instead of storing them, we should process them immediately and
-        store the scores array only.
-        """
-        self._batches[batch_index] = {}
-        self._batches[batch_index][DataType.PROBS] = probs
-        self._batches[batch_index][DataType.LABELS] = labels
+        if batch_index not in self._batches:
+            self._batches[batch_index] = {
+                DataType.INPUTS: None,
+                DataType.PROBS: None,
+                DataType.LABELS: None,
+            }
 
-        """
-        The above lines should change to:
-        self._batches[batch_index] = scores
-        """
+        self._batches[batch_index][kind] = data
+        entry = self._batches[batch_index]
 
+        # Enhanced: Only log and delete batch if all required data is present
+        if all(
+            entry[kind] is not None
+            for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
+        ):
+            self._mlflow_logger.log_single_batch(
+                batch_index,
+                entry[DataType.PROBS],
+                entry[DataType.INPUTS],
+                entry[DataType.LABELS],
+            )

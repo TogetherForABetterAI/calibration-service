@@ -62,7 +62,8 @@ class ClientManager(Process):
             self.consumer = Consumer(
                 middleware=self.middleware,
                 client_id=self.client_id,
-                replies_callback=self._handle_replies_message,
+                predictions_callback=self._handle_predictions_message,
+                inputs_callback=self._handle_inputs_message,
                 logger=self.logger,
             )
 
@@ -75,10 +76,16 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error setting up client {self.client_id}: {e}")
 
-    def _handle_replies_message(self, ch, method, properties, body):
-        """Callback for replies queue - calls BatchHandler._handle_probability_message"""
-        self.logger.info(f"Received replies message for client {self.client_id}")
-        self.batch_handler._handle_probability_message(ch, body)
+    def _handle_predictions_message(self, ch, method, properties, body):
+        """Callback for replies queue - calls BatchHandler._handle_predictions_message"""
+        self.logger.info(f"Received predictions message for client {self.client_id}")
+        self.batch_handler._handle_predictions_message(ch, body)
+
+    def _handle_inputs_message(self, ch, method, properties, body):
+        """Callback for inputs queue - calls BatchHandler._handle_inputs_message"""
+        self.logger.info(f"Received inputs message for client {self.client_id}")
+        self.batch_handler._handle_inputs_message(ch, body)
+
 
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""

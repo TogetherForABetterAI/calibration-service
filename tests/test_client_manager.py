@@ -69,12 +69,12 @@ def test_run_with_exception(MockConsumer, MockBatchHandler, mock_signal, client_
     assert "boom" in client_manager.logger.error.call_args[0][0]
 
 
-def test_handle_replies_message_calls_batchhandler(client_manager):
-    """Verifica que _handle_replies_message invoque correctamente el handler."""
+def test_handle_predictions_message_calls_batchhandler(client_manager):
+    """Verifica que _handle_predictions_message invoque correctamente el handler."""
     mock_batch = Mock()
     client_manager.batch_handler = mock_batch
-    client_manager._handle_replies_message(None, None, None, b"xyz")
-    mock_batch._handle_probability_message.assert_called_once_with(None, b"xyz")
+    client_manager._handle_predictions_message(None, None, None, b"xyz")
+    mock_batch._handle_predictions_message.assert_called_once_with(None, b"xyz")
 
 
 def test_handle_EOF_message_stops_processing(client_manager):
