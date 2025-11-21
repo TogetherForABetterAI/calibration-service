@@ -25,6 +25,7 @@ class Listener:
         report_builder_factory, 
         master_replica_id=1,
         initial_timeout=30, 
+        database=None,
         logger=None,
     ):
         self.middleware = middleware
@@ -236,6 +237,7 @@ class Listener:
             middleware=self.cm_middleware_factory(self.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
             report_builder=self.report_builder_factory(client_id=client_id),
+            database=self.database,
         )
         logging.info(f"Created ClientManager for client {client_id}")
         self._add_client(client_id, client_manager)

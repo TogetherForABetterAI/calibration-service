@@ -14,6 +14,7 @@ class ClientManager(Process):
         middleware,
         clients_to_remove_queue: Queue,
         report_builder,
+        database=None,
     ):
         """
         Initialize ClientManager as a Process.
@@ -33,6 +34,7 @@ class ClientManager(Process):
         self.batch_handler = None
         self.shutdown_initiated = False
         self.report_builder = report_builder
+        self.database = database
         logging.info(f"ClientManager for client {client_id} initialized")
 
 
@@ -57,6 +59,7 @@ class ClientManager(Process):
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
                 middleware=self.middleware,
+                dababase=self.database,
             )
 
             self.consumer = Consumer(

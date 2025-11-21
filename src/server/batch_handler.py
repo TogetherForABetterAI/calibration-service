@@ -14,6 +14,7 @@ class BatchHandler:
         on_eof,
         report_builder,
         middleware,
+        database=None,
     ):
         self.client_id = client_id
         self._report_builder = report_builder
@@ -21,7 +22,7 @@ class BatchHandler:
         self._replies_eof = False
         self._batches: Dict[int, Dict] = {}
         self._on_eof = on_eof
-        
+        self._db = database
         self._middleware = middleware
         """
         The line above should change to store only scores instead of probabilities per class and labels.

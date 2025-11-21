@@ -6,6 +6,8 @@ import threading
 from server.main import Server
 from lib.logger import initialize_logging
 from lib.config import initialize_config
+from src.database.db import Database
+from src.lib.db_engine import get_engine
 from src.middleware.middleware import Middleware
 
 
@@ -20,8 +22,10 @@ def main():
     def report_builder_factory(client_id: str):
         from src.server.batch_handler import ReportBuilder
         return ReportBuilder(client_id=client_id, email_sender=config.email_sender, email_password=config.email_password)
+    
+    db = Database(get_engine(config.database_url))
 
-    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory)
+    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory, database=db)
     server.run()
     
 

@@ -10,4 +10,4 @@ grpcio-tools>=1.75.1
 reportlab
 seaborn
 psycopg2-binary
-
+sqlalchemy

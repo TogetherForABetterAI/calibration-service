@@ -37,6 +37,12 @@ class GlobalConfig:
         self.log_level = os.getenv("LOGGING_LEVEL", "INFO")
         self.email_sender = os.getenv("EMAIL_SENDER", "default_sender@example.com")
         self.email_password = os.getenv("EMAIL_PASSWORD", "default_password")
+        postgres_user = os.getenv("POSTGRES_USER", "user")
+        postgres_password = os.getenv("POSTGRES_PASSWORD", "password")
+        postgres_host = os.getenv("POSTGRES_HOST", "localhost")
+        postgres_port = os.getenv("POSTGRES_PORT", "5432")
+        postgres_db = os.getenv("POSTGRES_DB", "calibration_db")
+        self.database_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
 
 
 def initialize_config():
