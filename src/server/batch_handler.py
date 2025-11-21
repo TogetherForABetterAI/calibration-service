@@ -4,7 +4,7 @@ import numpy as np
 from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
 from src.lib.data_types import DataType
 from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
-from src.service.report_builder import ReportBuilder
+from src.lib.report_builder import ReportBuilder
 
 
 class BatchHandler:

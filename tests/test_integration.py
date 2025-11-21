@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from src.lib.config import CONNECTION_QUEUE_NAME
 from src.lib.logger import initialize_logging
 from src.proto import calibration_pb2
-from src.service.report_builder import ReportBuilder
+from src.lib.report_builder import ReportBuilder
 from tests.mocks.fake_middleware import FakeMiddleware
 from src.server.main import Server
 import numpy as np
