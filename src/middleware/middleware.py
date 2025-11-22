@@ -1,5 +1,5 @@
-import pika
 import logging
+import pika
 
 from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
 
@@ -8,7 +8,7 @@ class Middleware:
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger("middleware")
-        self._consuming = False
+        self._is_running = False
         try:
             self.conn = pika.BlockingConnection(
                 pika.ConnectionParameters(
@@ -22,6 +22,9 @@ class Middleware:
             self.logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise e
 
+    def is_running(self):
+        return self._is_running
+    
     def setup_connection_queue(self, channel, durable=False):
         queue_name = CONNECTION_QUEUE_NAME
         exchange_name = CONNECTION_EXCHANGE
@@ -108,36 +111,50 @@ class Middleware:
                 )
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
+            if not self._is_running:
+                ch.basic_cancel(consumer_tag=method.consumer_tag)
+                ch.stop_consuming()
+
         return wrapper
 
     def start_consuming(self, channel):
         try:
+            self._is_running = True
             if channel and channel.is_open:
                 self.logger.info("Starting to consume messages")
                 channel.start_consuming()
         except KeyboardInterrupt:
             self.logger.error("Received interrupt signal, stopping consumption")
 
-    def stop_consuming(self, channel):
-        if channel and channel.is_open:
-            channel.stop_consuming()
-            self.logger.info("Stopped consuming messages")
-
     def close_channel(self, channel):
         try:
+            if self._is_running:
+                raise Exception("Cannot close channel while middleware is running")
+            
             if channel and channel.is_open:
                 channel.close()
                 self.logger.info("RabbitMQ channel closed")
         except Exception as e:
-            self.logger.error(
-                f"action: rabbitmq_connection_close | result: fail | error: {e}"
-            )
+            self.logger.error(f"action: rabbitmq_channel_close | result: fail | error: {e}")
+
+    def stop_consuming(self):
+        self._is_running = False
+        self.logger.info("Stopped consuming messages")
+
+    def delete_queue(self, channel, queue_name: str):
+        try:
+            channel.queue_delete(queue=queue_name)
+            self.logger.info(f"Queue '{queue_name}' deleted successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to delete queue '{queue_name}': {e}")
 
     def close_connection(self):
         try:
-            if self.conn and self.conn.is_open:
-                self.conn.close()
-                self.logger.info("RabbitMQ connection closed")
+            if self._is_running:
+                raise Exception("Cannot close connection while middleware is running")
+            
+            self.conn.close()
+            self.logger.info("RabbitMQ connection closed")
         except Exception as e:
             self.logger.error(
                 f"action: rabbitmq_connection_close | result: fail | error: {e}"

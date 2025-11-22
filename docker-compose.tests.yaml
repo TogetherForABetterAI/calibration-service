@@ -1,0 +1,14 @@
+services:
+  test_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    volumes:
+      - ./reports:/app/reports
+      - ./src/proto:/app/src/proto
+    networks:
+      - test_network
+
+networks:
+  test_network:
+    driver: bridge
