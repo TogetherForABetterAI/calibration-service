@@ -1,6 +1,6 @@
 # Calibration Service
 
-![workflow](https://github.com/TogetherForABetterAI/calibration-service/actions/workflows/test.yml/badge.svg)
+![workflow](https://github.com/TogetherForABetterAI/calibration-service/actions/workflows/test.yml/badge.svg) [![codecov](https://codecov.io/gh/TogetherForABetterAI/calibration-service/graph/badge.svg?token=KGS364DRTC)](https://codecov.io/gh/TogetherForABetterAI/calibration-service)
 
 ## Overview
 
