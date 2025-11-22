@@ -32,18 +32,15 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest pytest-cov coverage
 
-      - name: Run tests
+      - name: Run pytest with coverage
         env:
           PYTHONPATH: ./src
         run: |
-          pytest --cov --cov-report=xml
+          pytest --cov --cov-branch --cov-report=xml
 
-      - name: Report coverage
-        env:
-          PYTHONPATH: ./src
+      - name: Show coverage in terminal
         run: |
           coverage report
-          coverage xml
 
       - name: Upload coverage to Codecov
         if: success()
