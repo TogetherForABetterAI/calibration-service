@@ -42,6 +42,7 @@ class Listener:
         self.logger = logger or logging.getLogger("listener")
         self.channel = channel
         self.consumer_tag = None
+        self.database = database
 
         self.lower_bound_reached = False
         self.lower_bound_reached_lock = threading.Lock()
@@ -73,9 +74,11 @@ class Listener:
         # Thread de monitoreo
         self.remove_client_monitor = None
         self.lower_bound_reached_thread = None
-
+        
         self.logger.info(f"Listener initialized for queue: {CONNECTION_QUEUE_NAME}")
 
+
+         
     def _monitor_removals(self):
         """Monitor the removal queue and remove finished clients from _active_clients"""
         while True:
@@ -191,6 +194,7 @@ class Listener:
             except Exception as e:
                 self.logger.error(f"Error in lower bound checker: {e}")
                 continue     
+            
 
     def start(self):
         """Main listener loop with graceful shutdown support"""
@@ -219,12 +223,15 @@ class Listener:
 
         notification = json.loads(body.decode("utf-8"))
         client_id = notification.get("client_id")
+        session_id = notification.get("session_id")
+        
 
         if not client_id:
             self.logger.info(
                 f"Client notification missing client_id: {notification}"
             )
             return  
+        
 
         if not self.middleware.is_running():
             self.logger.info(
@@ -234,6 +241,7 @@ class Listener:
         
         client_manager = ClientManager(
             client_id=client_id,
+            session_id=session_id,
             middleware=self.cm_middleware_factory(self.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
             report_builder=self.report_builder_factory(client_id=client_id),

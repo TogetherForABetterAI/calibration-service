@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, List, Union
 import numpy as np
 from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
 from src.lib.data_types import DataType
@@ -11,6 +11,7 @@ class BatchHandler:
     def __init__(
         self,
         client_id: str,
+        session_id: str,
         on_eof,
         report_builder,
         middleware,
@@ -24,12 +25,40 @@ class BatchHandler:
         self._on_eof = on_eof
         self._db = database
         self._middleware = middleware
+        self._channel = self._middleware.create_channel()
+        self._scores = self._db.get_scores_from_session(client_id)
+        self._session_id = session_id
+        self._build_state()
         """
         The line above should change to store only scores instead of probabilities per class and labels.
         self._batches: Dict[int, np.ndarray] = {}
         """
 
-
+    def _build_state(self):
+        inputs = self._db.get_inputs_from_session(self._session_id)
+        if len(inputs) > 0:
+            for input in inputs:
+                self._restore_inputs_data(input)
+            
+        outputs = self._db.get_outputs_from_session(self._session_id)
+        if len(outputs) > 0:
+            for output in outputs:
+                self._handle_predictions_message(None, output)
+         
+    def _restore_inputs_data(self, body):
+        message = dataset_service_pb2.DataBatchLabeled()
+        message.ParseFromString(body)
+        images = self._process_input_data(message.data)
+        self.store_inputs(
+            message.batch_index, images, message.is_last_batch, list(message.labels)
+        )
+        
+    def _restore_outputs_data(self, body):
+        message = calibration_pb2.Predictions()
+        message.ParseFromString(body)
+        probs = np.array([list(p.values) for p in message.pred], dtype=np.float32)
+        self.store_outputs(message.batch_index, probs)
+            
     def handle_sigterm(self):
         """Stop processing and clean up resources."""
         pass
@@ -67,33 +96,17 @@ class BatchHandler:
                 f"action: receive_predictions | result: success | eof {message.eof}"
             )
 
-            probs = np.array([list(p.values) for p in message.pred], dtype=np.float32)
-            # labels = np.array([lbl for lbl in message.labels], dtype=np.int32)
+            probs = np.array([list(pred_list.values) for pred_list in message.pred], dtype=np.float32)
 
+            if message.batch_index in self._batches and self._batches[message.batch_index][DataType.PROBS] is not None:
+                # Duplicate batch index received
+                logging.warning(
+                    f"Duplicate probabilities for batch {message.batch_index} from client {self.client_id}"
+                )
+                return
+
+            self.store_outputs(message.batch_index, probs)
             # scores = run_calibration_algorithm(probs) 
-
-            self.store_outputs(
-                message.batch_index, probs, message.eof
-            )
-
-            # send mlflow logging message
-
-            mlflow_msg = mlflow_probs_pb2.MlflowProbs()
-            for p in message.pred:
-                prob = mlflow_probs_pb2.PredictionList()
-                prob.values.extend(p.values)
-                mlflow_msg.pred.append(prob)
-
-            mlflow_msg.batch_index = message.batch_index
-            mlflow_msg.client_id = self.client_id
-            mlflow_body = mlflow_msg.SerializeToString()
-
-            self._middleware.basic_send(
-                channel=ch,  
-                exchange_name=MLFLOW_EXCHANGE,
-                routing_key=MLFLOW_ROUTING_KEY,
-                body=mlflow_body,
-            )
 
             if message.eof:
                 self.send_report()
@@ -111,10 +124,15 @@ class BatchHandler:
             message = dataset_service_pb2.DataBatchLabeled()
             message.ParseFromString(body)
             images = self._process_input_data(message.data)
+            
+            if message.batch_index in self._batches and self._batches[message.batch_index][DataType.INPUTS] is not None:
+                # Duplicate batch index received
+                logging.warning(
+                    f"Duplicate inputs for batch {message.batch_index} from client {self.client_id}"
+                )
+                return
 
-            self.store_input_data(
-                message.batch_index, images, message.is_last_batch, list(message.labels)
-            )
+            self.store_inputs(message.batch_index, images, list(message.labels))
 
             if message.is_last_batch:
                 self._labeled_eof = True
@@ -142,21 +160,20 @@ class BatchHandler:
 
         return images.reshape((num_images, *image_shape))
 
-    def store_outputs(self, batch_index: int, probs: np.ndarray, is_last_batch: bool):
-        self._store_data(batch_index, DataType.PROBS, probs, is_last_batch)
+    def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray]):
+        self._store_data(batch_index, DataType.PROBS, probs)
 
-    def store_input_data(
+    def store_inputs(
         self,
         batch_index: int,
         inputs: np.ndarray,
-        is_last_batch: bool,
         labels: np.ndarray,
     ):
-        self._store_data(batch_index, DataType.INPUTS, inputs, is_last_batch)
-        self._store_data(batch_index, DataType.LABELS, labels, is_last_batch)
+        self._store_data(batch_index, DataType.INPUTS, inputs)
+        self._store_data(batch_index, DataType.LABELS, labels)
 
     def _store_data(
-        self, batch_index: int, kind: DataType, data: np.ndarray, eof: bool
+        self, batch_index: int, kind: DataType, data: np.ndarray
     ):
         if batch_index not in self._batches:
             self._batches[batch_index] = {
@@ -168,14 +185,23 @@ class BatchHandler:
         self._batches[batch_index][kind] = data
         entry = self._batches[batch_index]
 
-        # Enhanced: Only log and delete batch if all required data is present
         if all(
             entry[kind] is not None
             for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
         ):
-            self._mlflow_logger.log_single_batch(
-                batch_index,
-                entry[DataType.PROBS],
-                entry[DataType.INPUTS],
-                entry[DataType.LABELS],
+            mlflow_msg = mlflow_probs_pb2.MlflowProbs()
+            for p in entry[DataType.PROBS]:
+                prob = mlflow_probs_pb2.PredictionList()
+                prob.values.extend(p.values)
+                mlflow_msg.pred.append(prob)
+
+            mlflow_msg.batch_index = batch_index
+            mlflow_msg.client_id = self.client_id
+            mlflow_body = mlflow_msg.SerializeToString()
+
+            self._middleware.basic_send(
+                channel=self._channel,  
+                exchange_name=MLFLOW_EXCHANGE,
+                routing_key=MLFLOW_ROUTING_KEY,
+                body=mlflow_body,
             )

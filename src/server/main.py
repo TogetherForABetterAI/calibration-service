@@ -18,7 +18,7 @@ class Server():
         # Establish RabbitMQ connection and middleware
         self.logger.info("Connecting to RabbitMQ...")
         self.middleware = middleware_cls
-        channel = self.middleware.create_channel(prefetch_count=1)
+        channel = self.middleware.create_channel(prefetch_count=self.config.server_config.upper_bound_clients)
         self.middleware.setup_connection_queue(channel, durable=False)
 
         self.logger.info("Initializing Listener...")

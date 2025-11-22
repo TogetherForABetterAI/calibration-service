@@ -211,8 +211,35 @@ class ReportBuilder:
         message["Subject"] = "Informe de Evaluación Metrológica – INTI"
         message["From"] = self.email_sender
         message["To"] = receiver
-        message.set_content("Adjuntamos el informe de evaluación metrológica de su modelo.")
+        html = f"""
+<html>
+    <body style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333; line-height: 1.6; margin: 0; padding: 0;">
+        
+        <p>Estimado/a,</p>
 
+        <p>
+        Adjuntamos el <strong>Reporte de Evaluación Metrológica</strong> correspondiente a su modelo.
+        El documento incluye una síntesis de los resultados estadísticos obtenidos, junto con el análisis 
+        de calibración probabilística y cuantificación de incertidumbre realizado durante la evaluación.
+        </p>
+
+        <p>
+        <em>Este es un correo generado automáticamente. Por favor, no responda a este mensaje.</em>
+        </p>
+
+        <p>
+        Ante cualquier consulta, comuníquese a través de los canales habituales de soporte.
+        </p>
+
+        <br>
+
+        <p>Saludos cordiales,<br>
+        <strong>Equipo de Evaluación Metrológica – INTI</strong></p>
+
+    </body>
+</html>
+        """
+        message.add_alternative(html, subtype="html")
         with open(self._pdf_path, "rb") as f:
             message.add_attachment(
                 f.read(), maintype="application", subtype="pdf",

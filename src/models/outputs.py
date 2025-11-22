@@ -1,20 +1,18 @@
 
 
-from typing import List
-from typing import Optional
+from datetime import datetime
 from lib.orm_base import Base
-from sqlalchemy import Column, String
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, DateTime, String
 import uuid
 
 class ModelOutputs(Base):
     __tablename__ = "model_outputs"
 
-    internal_id = Column(uuid.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(uuid.UUID(as_uuid=True), primary_key=True)
-    session_id = Column(uuid.UUID(as_uuid=True), primary_key=True, unique=True)
-    batch_id = Column(int, nullable=False)
-    outputs = Column(bytes, unique=True)
+    session_id = Column(uuid.UUID(as_uuid=True), nullable=False, primary_key=True)
+    batch_id = Column(int, nullable=False, primary_key=True)
+    user_id = Column(uuid.UUID(as_uuid=True))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    outputs = Column(bytes)
     status = Column(String, nullable=False)
 
     def __repr__(self) -> str:

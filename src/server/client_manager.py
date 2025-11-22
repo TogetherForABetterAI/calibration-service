@@ -11,6 +11,7 @@ class ClientManager(Process):
     def __init__(
         self,
         client_id: str,
+        session_id: str,
         middleware,
         clients_to_remove_queue: Queue,
         report_builder,
@@ -35,6 +36,9 @@ class ClientManager(Process):
         self.shutdown_initiated = False
         self.report_builder = report_builder
         self.database = database
+        self.session_id = session_id
+    
+        
         logging.info(f"ClientManager for client {client_id} initialized")
 
 
@@ -56,6 +60,7 @@ class ClientManager(Process):
             logging.info(f"ClientManager process started for client {self.client_id}")
             self.batch_handler = BatchHandler(
                 client_id=self.client_id,
+                session_id=self.session_id,
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
                 middleware=self.middleware,

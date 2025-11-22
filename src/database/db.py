@@ -12,6 +12,7 @@ from src.models.inputs import ModelInputs
 from src.models.outputs import ModelOutputs
 from src.models.scores import Scores
 from src.lib.db_engine import Base
+from src.models.sessions import Sessions
 
 
 class Database:
@@ -48,153 +49,147 @@ class Database:
             else:
                 logging.info("Table 'followers' does not exist")
 
-    def write_scores(self, session_id: UUID, scores: bytes):
+    def update_scores(self, session_id: UUID, scores: bytes):
         """
-        Write scores to the database for a given session_id.
+        Update scores to the database for a given session_id.
         If a record with the session_id exists, update it; otherwise, insert a new record
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(Scores).where(Scores.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(Scores).where(Scores.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                result.scores = scores
-                logging.info(f"Updating scores for session_id: {session_id}")
-            else:
-                new_score = Scores(session_id=session_id, scores=scores)
-                session.add(new_score)
-                logging.info(f"Inserting new scores for session_id: {session_id}")
+                if result:
+                    result.scores = scores
+                    logging.info(f"Updating scores for session_id: {session_id}")
+                else:
+                    new_score = Scores(session_id=session_id, scores=scores)
+                    session.add(new_score)
+                    logging.info(f"Inserting new scores for session_id: {session_id}")
 
-            session.commit()
-        except SQLAlchemyError as e:
-            logging.error(f"Error writing scores for session_id {session_id}: {e}")
-            session.rollback()
-        finally:
-            session.close()
+                session.commit()
+            except SQLAlchemyError as e:
+                logging.error(f"Error writing scores for session_id {session_id}: {e}")
+                session.rollback()
+            finally:
+                session.close()
 
     def write_inputs(self, session_id: UUID, inputs: bytes):
         """
         Write inputs to the database for a given session_id.
         If a record with the session_id exists, update it; otherwise, insert a new record
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(ModelInputs).where(ModelInputs.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(ModelInputs).where(ModelInputs.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                result.inputs = inputs
-                logging.info(f"Updating inputs for session_id: {session_id}")
-            else:
-                new_input = ModelInputs(session_id=session_id, inputs=inputs)
-                session.add(new_input)
-                logging.info(f"Inserting new inputs for session_id: {session_id}")
+                if result:
+                    result.inputs = inputs
+                    logging.info(f"Updating inputs for session_id: {session_id}")
+                else:
+                    new_input = ModelInputs(session_id=session_id, inputs=inputs)
+                    session.add(new_input)
+                    logging.info(f"Inserting new inputs for session_id: {session_id}")
 
-            session.commit()
-        except SQLAlchemyError as e:
-            logging.error(f"Error writing inputs for session_id {session_id}: {e}")
-            session.rollback()
-        finally:
-            session.close()
+                session.commit()
+            except SQLAlchemyError as e:
+                logging.error(f"Error writing inputs for session_id {session_id}: {e}")
+                session.rollback()
+            finally:
+                session.close()
 
     def write_outputs(self, session_id: UUID, outputs: bytes):
         """
         Write outputs to the database for a given session_id.
         If a record with the session_id exists, update it; otherwise, insert a new record
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(ModelOutputs).where(ModelOutputs.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(ModelOutputs).where(ModelOutputs.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                result.outputs = outputs
-                logging.info(f"Updating outputs for session_id: {session_id}")
-            else:
-                new_output = ModelOutputs(session_id=session_id, outputs=outputs)
-                session.add(new_output)
-                logging.info(f"Inserting new outputs for session_id: {session_id}")
+                if result:
+                    result.outputs = outputs
+                    logging.info(f"Updating outputs for session_id: {session_id}")
+                else:
+                    new_output = ModelOutputs(session_id=session_id, outputs=outputs)
+                    session.add(new_output)
+                    logging.info(f"Inserting new outputs for session_id: {session_id}")
 
-            session.commit()
-        except SQLAlchemyError as e:
-            logging.error(f"Error writing outputs for session_id {session_id}: {e}")
-            session.rollback()
-        finally:
-            session.close()
-
+                session.commit()
+            except SQLAlchemyError as e:
+                logging.error(f"Error writing outputs for session_id {session_id}: {e}")
+                session.rollback()
+            finally:
+                session.close()
     
-    def read_scores(self, session_id: UUID) -> bytes | None:
+    def get_scores_from_session(self, session_id: UUID) -> bytes | None:
         """
         Read scores from the database for a given session_id.
         Returns the scores as bytes if found, otherwise None.
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(Scores).where(Scores.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+        
+            try:
+                stmt = select(Scores).where(Scores.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                logging.info(f"Scores found for session_id: {session_id}")
-                return result.scores
-            else:
-                logging.info(f"No scores found for session_id: {session_id}")
+                if result:
+                    logging.info(f"Scores found for session_id: {session_id}")
+                    return result.scores
+                else:
+                    logging.info(f"No scores found for session_id: {session_id}")
+                    return None
+            except SQLAlchemyError as e:
+                logging.error(f"Error reading scores for session_id {session_id}: {e}")
                 return None
-        except SQLAlchemyError as e:
-            logging.error(f"Error reading scores for session_id {session_id}: {e}")
-            return None
-        finally:
-            session.close()
+            finally:
+                session.close()
 
-    def read_inputs(self, session_id: UUID) -> bytes | None:
+    def get_inputs_from_session(self, session_id: UUID) -> bytes | None:
         """
         Read inputs from the database for a given session_id.
         Returns the inputs as bytes if found, otherwise None.
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(ModelInputs).where(ModelInputs.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(ModelInputs).where(ModelInputs.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                logging.info(f"Inputs found for session_id: {session_id}")
-                return result.inputs
-            else:
-                logging.info(f"No inputs found for session_id: {session_id}")
+                if result:
+                    logging.info(f"Inputs found for session_id: {session_id}")
+                    return result.inputs
+                else:
+                    logging.info(f"No inputs found for session_id: {session_id}")
+                    return None
+            except SQLAlchemyError as e:
+                logging.error(f"Error reading inputs for session_id {session_id}: {e}")
                 return None
-        except SQLAlchemyError as e:
-            logging.error(f"Error reading inputs for session_id {session_id}: {e}")
-            return None
-        finally:
-            session.close()
+            finally:
+                session.close()
 
-    def read_outputs(self, session_id: UUID) -> bytes | None:
+    def get_outputs_from_session(self, session_id: UUID) -> bytes | None:
         """
         Read outputs from the database for a given session_id.
         Returns the outputs as bytes if found, otherwise None.
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(ModelOutputs).where(ModelOutputs.session_id == session_id)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(ModelOutputs).where(ModelOutputs.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                logging.info(f"Outputs found for session_id: {session_id}")
-                return result.outputs
-            else:
-                logging.info(f"No outputs found for session_id: {session_id}")
+                if result:
+                    logging.info(f"Outputs found for session_id: {session_id}")
+                    return result.outputs
+                else:
+                    logging.info(f"No outputs found for session_id: {session_id}")
+                    return None
+            except SQLAlchemyError as e:
+                logging.error(f"Error reading outputs for session_id {session_id}: {e}")
                 return None
-        except SQLAlchemyError as e:
-            logging.error(f"Error reading outputs for session_id {session_id}: {e}")
-            return None
-        finally:
-            session.close()
+            finally:
+                session.close()
 
 
     def get_last_processed_batch_id(self) -> int | None:
@@ -202,28 +197,24 @@ class Database:
         Retrieve the last processed batch ID from the database.
         Returns the batch ID as an integer if found, otherwise None.
         """
-        SessionLocal = sessionmaker(bind=self.engine)
-        session: Session = SessionLocal()
-        try:
-            stmt = select(Scores).order_by(Scores.batch_id.desc()).limit(1)
-            result = session.execute(stmt).scalar_one_or_none()
+        with Session(self.engine) as session:
+            try:
+                stmt = select(Scores).order_by(Scores.batch_id.desc()).limit(1)
+                result = session.execute(stmt).scalar_one_or_none()
 
-            if result:
-                logging.info(f"Last processed batch ID: {result.batch_id}")
-                return result.batch_id
-            else:
-                logging.info("No processed batches found")
+                if result:
+                    logging.info(f"Last processed batch ID: {result.batch_id}")
+                    return result.batch_id
+                else:
+                    logging.info("No processed batches found")
+                    return None
+            except SQLAlchemyError as e:
+                logging.error(f"Error retrieving last processed batch ID: {e}")
                 return None
-        except SQLAlchemyError as e:
-            logging.error(f"Error retrieving last processed batch ID: {e}")
-            return None
-        finally:
-            session.close()
-
-    
-
-    
-
+            finally:
+                session.close()
+                
+            
         
 
       
