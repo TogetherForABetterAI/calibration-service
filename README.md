@@ -1,4 +1,6 @@
-# Calibration Service - Updated Architecture
+# Calibration Service
+
+![workflow](https://github.com/TogetherForABetterAI/calibration-service/actions/workflows/test.yml/badge.svg)
 
 ## Overview
 
