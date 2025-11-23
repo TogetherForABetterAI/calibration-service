@@ -32,21 +32,21 @@ class Database:
                 logging.error(f"Error creating table: {e}")
                 connection.rollback()
 
-            table_user_exists = connection.dialect.has_table(connection, "users") 
-            if table_user_exists:
-                logging.info("Table 'users' exists")
-            else:
-                logging.info("Table does not exist")
+            # table_user_exists = connection.dialect.has_table(connection, "users") 
+            # if table_user_exists:
+            #     logging.info("Table 'users' exists")
+            # else:
+            #     logging.info("Table does not exist")
 
-            if connection.dialect.has_table(connection, "userinfo"):
-                logging.info("Table 'userinfo' exists")
-            else:
-                logging.info("Table 'userinfo' does not exist")
+            # if connection.dialect.has_table(connection, "userinfo"):
+            #     logging.info("Table 'userinfo' exists")
+            # else:
+            #     logging.info("Table 'userinfo' does not exist")
 
-            if connection.dialect.has_table(connection, "followers"):
-                logging.info("Table 'followers' exists")
-            else:
-                logging.info("Table 'followers' does not exist")
+            # if connection.dialect.has_table(connection, "followers"):
+            #     logging.info("Table 'followers' exists")
+            # else:
+            #     logging.info("Table 'followers' does not exist")
 
     def update_scores(self, session_id: UUID, scores: bytes):
         """
