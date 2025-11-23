@@ -21,11 +21,11 @@ class Consumer:
         self.client_id = client_id
         self.logger = logger or logging.getLogger(f"consumer-{client_id}")
         self.labeled_queue_name = f"{client_id}_labeled_queue"
-        self.replies_queue_name = f"{client_id}_replies_queue"
-        self.routing_key_labeled = f"{client_id}.labeled"
-        self.routing_key_replies = f"{client_id}"
-        self.inputs_exchange = INPUTS_EXCHANGE
-        self.replies_exchange = REPLIES_EXCHANGE
+        self.replies_queue_name = f"{client_id}_calibration_queue"
+        # self.routing_key_labeled = f"{client_id}.labeled"
+        # self.routing_key_replies = f"{client_id}"
+        # self.inputs_exchange = INPUTS_EXCHANGE
+        # self.replies_exchange = REPLIES_EXCHANGE
         self.inputs_callback = inputs_callback  # Callback for inputs queue
         self.predictions_callback = predictions_callback  # Callback for replies queue
         self._shutdown_initiated = False
@@ -81,42 +81,42 @@ class Consumer:
 
     def _setup_queues(self):
         # Declare and bind labeled queue to INPUTS_EXCHANGE
-        self.middleware.declare_exchange(
-            self.channel,
-            self.inputs_exchange,
-            exchange_type="direct",
-            durable=False,
-        )
+        # self.middleware.declare_exchange(
+        #     self.channel,
+        #     self.inputs_exchange,
+        #     exchange_type="direct",
+        #     durable=False,
+        # )
 
         self.middleware.declare_queue(
             self.channel, self.labeled_queue_name, durable=False
         )
 
-        self.middleware.bind_queue(
-            self.channel,
-            self.labeled_queue_name,
-            self.inputs_exchange,
-            self.routing_key_labeled,
-        )
+        # self.middleware.bind_queue(
+        #     self.channel,
+        #     self.labeled_queue_name,
+        #     self.inputs_exchange,
+        #     self.routing_key_labeled,
+        # )
 
         # Declare and bind replies queue to REPLIES_EXCHANGE
-        self.middleware.declare_exchange(
-            self.channel,
-            self.replies_exchange,
-            exchange_type="direct",
-            durable=False,
-        )
+        # self.middleware.declare_exchange(
+        #     self.channel,
+        #     self.replies_exchange,
+        #     exchange_type="direct",
+        #     durable=False,
+        # )
 
-        self.middleware.declare_queue(
-            self.channel, self.replies_queue_name, durable=False
-        )
+        # self.middleware.declare_queue(
+        #     self.channel, self.replies_queue_name, durable=False
+        # )
 
-        self.middleware.bind_queue(
-            self.channel,
-            self.replies_queue_name,
-            self.replies_exchange,
-            self.routing_key_replies,
-        )
+        # self.middleware.bind_queue(
+        #     self.channel,
+        #     self.replies_queue_name,
+        #     self.replies_exchange,
+        #     self.routing_key_replies,
+        # )
 
         self.middleware.basic_consume(
             self.channel, self.labeled_queue_name, self._inputs_callback
