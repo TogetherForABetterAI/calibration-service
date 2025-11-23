@@ -1,18 +1,20 @@
 
 
 from datetime import datetime
-from lib.orm_base import Base
-from sqlalchemy import Column, DateTime, String
-import uuid
+from lib.db_engine import Base
+from sqlalchemy import Column, DateTime, Integer, LargeBinary, String
+from sqlalchemy.dialects.postgresql import UUID
+
+
 
 class ModelOutputs(Base):
     __tablename__ = "model_outputs"
 
-    session_id = Column(uuid.UUID(as_uuid=True), nullable=False, primary_key=True)
-    batch_id = Column(int, nullable=False, primary_key=True)
-    user_id = Column(uuid.UUID(as_uuid=True))
+    session_id = Column(UUID(as_uuid=True), nullable=False, primary_key=True)
+    batch_id = Column(Integer, nullable=False, primary_key=True)
+    user_id = Column(UUID(as_uuid=True))
     timestamp = Column(DateTime, default=datetime.utcnow)
-    outputs = Column(bytes)
+    outputs = Column(LargeBinary)
     status = Column(String, nullable=False)
 
     def __repr__(self) -> str:

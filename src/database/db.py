@@ -12,7 +12,6 @@ from src.models.inputs import ModelInputs
 from src.models.outputs import ModelOutputs
 from src.models.scores import Scores
 from src.lib.db_engine import Base
-from src.models.sessions import Sessions
 
 
 class Database:
