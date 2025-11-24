@@ -1,10 +1,9 @@
 from typing import Optional
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.declarative import declarative_base
 
 
-class Base(DeclarativeBase):
-    pass
+Base = declarative_base()
 
 def get_engine(database_url) -> Optional[create_engine]:
     return create_engine(database_url, echo=True)

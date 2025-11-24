@@ -1,11 +1,7 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, String, or_, and_
 from sqlalchemy.exc import NoResultFound, SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-
-
-from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import logging
 from src.models.inputs import ModelInputs
@@ -13,41 +9,21 @@ from src.models.outputs import ModelOutputs
 from src.models.scores import Scores
 from src.lib.db_engine import Base
 
-
 class Database:
     def __init__(self, engine):
         self.engine = engine
-        self.scores_table = Scores.__table__
-        self.inputs_table = ModelInputs.__table__
-        self.outputs_table = ModelOutputs.__table__
-        self.create_table()
+        try:
+            self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+            Base.metadata.create_all(bind=self.engine)
 
-    def create_table(self):
-        with self.engine.connect() as connection:
-            try:
-                Base.metadata.create_all(bind=connection) 
-                logging.info("Table created successfully")
-                connection.commit()
-            except SQLAlchemyError as e:
-                logging.error(f"Error creating table: {e}")
-                connection.rollback()
+            logging.info("Tables created successfully")
+            logging.info(f"USING ENGINE: {self.engine.url}")
+            logging.info(Base.metadata.tables.keys())
 
-            # table_user_exists = connection.dialect.has_table(connection, "users") 
-            # if table_user_exists:
-            #     logging.info("Table 'users' exists")
-            # else:
-            #     logging.info("Table does not exist")
+        except SQLAlchemyError as e:
+            logging.error(f"Error creating tables: {e}")
 
-            # if connection.dialect.has_table(connection, "userinfo"):
-            #     logging.info("Table 'userinfo' exists")
-            # else:
-            #     logging.info("Table 'userinfo' does not exist")
-
-            # if connection.dialect.has_table(connection, "followers"):
-            #     logging.info("Table 'followers' exists")
-            # else:
-            #     logging.info("Table 'followers' does not exist")
-
+            
     def update_scores(self, session_id: UUID, scores: bytes):
         """
         Update scores to the database for a given session_id.

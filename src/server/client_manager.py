@@ -64,7 +64,7 @@ class ClientManager(Process):
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
                 middleware=self.middleware,
-                dababase=self.database,
+                database=self.database,
             )
 
             self.consumer = Consumer(

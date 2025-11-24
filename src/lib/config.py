@@ -3,7 +3,7 @@ import os
 # RabbitMQ
 REPLIES_EXCHANGE = "replies_exchange"
 INPUTS_EXCHANGE = "inputs_exchange"
-CONNECTION_EXCHANGE = "new_connections"
+CONNECTION_EXCHANGE = "new_connections_exchange"
 CONNECTION_QUEUE_NAME = "calibration_service_connections_queue"
 COORDINATOR_EXCHANGE = "coordinator_exchange"
 MLFLOW_EXCHANGE = "mlflow_exchange"

@@ -1,8 +1,7 @@
 import logging
 import pika
 
-from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE, MLFLOW_EXCHANGE
-
+from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
 
 class Middleware:
     def __init__(self, config):
@@ -33,7 +32,6 @@ class Middleware:
         connection_exchange = CONNECTION_EXCHANGE
         coordinator_exchange = COORDINATOR_EXCHANGE # Provisorio. Hasta que este el microservicio y hagamos la creacion desde ahi.
 
-        # Declare the exchange (fanout type for broadcasting)
         self.declare_exchange(
             channel, connection_exchange, exchange_type="fanout", durable=durable
         )
@@ -176,7 +174,7 @@ class Middleware:
         if channel and channel.is_open:
             self.logger.info(f"Cancelling consumer for channel: {channel}")
             channel.basic_cancel(consumer_tag=self.consumer_tag)
-            self.channel.stop_consuming()
+            channel.stop_consuming()
             
     def stop_consuming(self):
         self._is_running = False
