@@ -80,43 +80,9 @@ class Consumer:
         self.logger.info(f"Consumer shutdown complete for client {self.client_id}")
 
     def _setup_queues(self):
-        # Declare and bind labeled queue to INPUTS_EXCHANGE
-        # self.middleware.declare_exchange(
-        #     self.channel,
-        #     self.inputs_exchange,
-        #     exchange_type="direct",
-        #     durable=False,
-        # )
-
         self.middleware.declare_queue(
-            self.channel, self.labeled_queue_name, durable=False
+            self.channel, self.labeled_queue_name, durable=True
         )
-
-        # self.middleware.bind_queue(
-        #     self.channel,
-        #     self.labeled_queue_name,
-        #     self.inputs_exchange,
-        #     self.routing_key_labeled,
-        # )
-
-        # Declare and bind replies queue to REPLIES_EXCHANGE
-        # self.middleware.declare_exchange(
-        #     self.channel,
-        #     self.replies_exchange,
-        #     exchange_type="direct",
-        #     durable=False,
-        # )
-
-        # self.middleware.declare_queue(
-        #     self.channel, self.replies_queue_name, durable=False
-        # )
-
-        # self.middleware.bind_queue(
-        #     self.channel,
-        #     self.replies_queue_name,
-        #     self.replies_exchange,
-        #     self.routing_key_replies,
-        # )
 
         self.middleware.basic_consume(
             self.channel, self.labeled_queue_name, self._inputs_callback

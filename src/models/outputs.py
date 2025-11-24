@@ -6,7 +6,6 @@ from sqlalchemy import Column, DateTime, Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
 
 
-
 class ModelOutputs(Base):
     __tablename__ = "model_outputs"
 

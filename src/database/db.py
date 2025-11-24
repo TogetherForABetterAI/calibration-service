@@ -115,7 +115,7 @@ class Database:
                     return result.scores
                 else:
                     logging.info(f"No scores found for session_id: {session_id}")
-                    return None
+                    return []
             except SQLAlchemyError as e:
                 logging.error(f"Error reading scores for session_id {session_id}: {e}")
                 return None
@@ -137,7 +137,7 @@ class Database:
                     return result.inputs
                 else:
                     logging.info(f"No inputs found for session_id: {session_id}")
-                    return None
+                    return []
             except SQLAlchemyError as e:
                 logging.error(f"Error reading inputs for session_id {session_id}: {e}")
                 return None
@@ -159,7 +159,7 @@ class Database:
                     return result.outputs
                 else:
                     logging.info(f"No outputs found for session_id: {session_id}")
-                    return None
+                    return []
             except SQLAlchemyError as e:
                 logging.error(f"Error reading outputs for session_id {session_id}: {e}")
                 return None

@@ -68,9 +68,6 @@ class ReportBuilder:
         if len(y_true) == 0 or len(probs) == 0:
             raise ValueError("Los vectores de etiquetas o probabilidades están vacíos.")
 
-        if len(y_true) != probs.shape[0]:
-            raise ValueError(f"Dimensiones incompatibles: y_true tiene {len(y_true)} elementos y probs tiene {probs.shape[0]} filas.")
-
         y_pred = np.argmax(probs, axis=1)
         confidences = np.max(probs, axis=1)
 

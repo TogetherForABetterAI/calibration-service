@@ -16,6 +16,7 @@ class BatchHandler:
         report_builder,
         middleware,
         database=None,
+        inputs_format=None,
     ):
         self.client_id = client_id
         self._report_builder = report_builder
@@ -28,6 +29,7 @@ class BatchHandler:
         self._channel = self._middleware.create_channel()
         self._scores = self._db.get_scores_from_session(client_id)
         self._session_id = session_id
+        self._inputs_format = inputs_format
         self._build_state()
         """
         The line above should change to store only scores instead of probabilities per class and labels.
@@ -81,7 +83,7 @@ class BatchHandler:
 
         self._report_builder.build_report(y_test, y_pred)
         logging.info(f"action: build_report | result: success")
-        self._report_builder.send_report()
+        #self._report_builder.send_report("guldenjf@gmail.com")
         logging.info(f"action: send_report | result: success")
 
 
@@ -149,16 +151,37 @@ class BatchHandler:
             raise e
         
     def _process_input_data(self, data):
-        image_shape = (1, 28, 28)
-        image_dtype = np.float32
-        image_size = np.prod(image_shape)
-        images = np.frombuffer(data, dtype=image_dtype)
-        num_floats = images.size
-        num_images = num_floats // image_size
-        if num_images * image_size != num_floats:
-            raise ValueError("Incompatible data size for image")
+        
+        data_array = np.frombuffer(data, dtype=self._inputs_format.dtype)
+        
+        data_size = np.prod(self._inputs_format.shape)
+        num_elements = data_array.size
+        num_samples = num_elements // data_size
 
-        return images.reshape((num_images, *image_shape))
+        if num_samples * data_size != num_elements:
+            raise ValueError(
+                f"Data size incompatible with expected format. "
+                f"Expected elements per sample: {data_size}, "
+                f"total elements: {num_elements}, "
+                f"calculated samples: {num_samples}, "
+                f"remainder: {num_elements % data_size}"
+            )
+
+        try:
+            data_array = data_array.reshape((num_samples, *self._inputs_format.shape))
+        except Exception as e:
+            raise ValueError(f"Error reshaping data: {e}")
+        
+        if len(data_array.shape) == 4:
+            H, W = data_array.shape[1], data_array.shape[2]
+            C = data_array.shape[3] if data_array.shape[-1] in [1, 3] else None
+
+            # detect HWC only if last dim is channels
+            if data_array.shape[-1] in [1, 3] and H != 1:
+                data_array = np.transpose(data_array, (0, 3, 1, 2))
+
+        return data_array
+            
 
     def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray]):
         self._store_data(batch_index, DataType.PROBS, probs)
@@ -192,11 +215,14 @@ class BatchHandler:
             mlflow_msg = mlflow_probs_pb2.MlflowProbs()
             for p in entry[DataType.PROBS]:
                 prob = mlflow_probs_pb2.PredictionList()
-                prob.values.extend(p.values)
+                prob.values.extend(p)
                 mlflow_msg.pred.append(prob)
 
             mlflow_msg.batch_index = batch_index
             mlflow_msg.client_id = self.client_id
+            mlflow_msg.session_id = self._session_id
+            mlflow_msg.data = entry[DataType.INPUTS].tobytes()
+            mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
             mlflow_body = mlflow_msg.SerializeToString()
 
             self._middleware.basic_send(

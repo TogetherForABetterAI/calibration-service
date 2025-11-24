@@ -3,12 +3,13 @@ import os
 import signal
 import threading
 import time
-from typing import Dict
+from typing import Dict, Optional
 from multiprocessing import Queue
 from lib.config import CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
 from server.client_manager import ClientManager
 import json
 
+from src.lib.inputs_format_parser import parse_inputs_format
 from src.middleware.middleware import Middleware
 
 
@@ -215,8 +216,7 @@ class Listener:
             
         logging.info("Listener stopping consumption...")
         self.finish()
-        
-
+    
     def _handle_new_client(self, ch, method, properties, body):
         """Launch a ClientManager process for each new client notification (all logic inside ClientManager)."""
         self.logger.info("Received new client connection notification")
@@ -224,7 +224,7 @@ class Listener:
         notification = json.loads(body.decode("utf-8"))
         client_id = notification.get("client_id")
         session_id = notification.get("session_id")
-        
+        inputs_format = parse_inputs_format(notification.get("inputs_format"))
 
         if not client_id:
             self.logger.info(
@@ -246,6 +246,7 @@ class Listener:
             clients_to_remove_queue=self.clients_to_remove_queue,
             report_builder=self.report_builder_factory(client_id=client_id),
             database=self.database,
+            inputs_format=inputs_format,
         )
         logging.info(f"Created ClientManager for client {client_id}")
         self._add_client(client_id, client_manager)
