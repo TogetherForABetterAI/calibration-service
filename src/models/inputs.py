@@ -1,7 +1,7 @@
 
 
 import datetime
-from lib.db_engine import Base
+from src.lib.db_engine import Base
 from sqlalchemy import Column, DateTime, Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
 
