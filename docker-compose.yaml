@@ -3,8 +3,8 @@ services:
     container_name: calibration-service
     build: .
     env_file: .env
-    ports:
-      - "50052:50052"
+    depends_on:
+      - calibration-db
     volumes:
       - ./reports:/app/reports
       - ./src/proto:/app/src/proto
