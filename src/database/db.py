@@ -167,19 +167,19 @@ class Database:
                 session.close()
 
 
-    def get_last_processed_batch_id(self) -> int | None:
+    def get_last_processed_batch_index(self) -> int | None:
         """
         Retrieve the last processed batch ID from the database.
         Returns the batch ID as an integer if found, otherwise None.
         """
         with Session(self.engine) as session:
             try:
-                stmt = select(Scores).order_by(Scores.batch_id.desc()).limit(1)
+                stmt = select(Scores).order_by(Scores.batch_index.desc()).limit(1)
                 result = session.execute(stmt).scalar_one_or_none()
 
                 if result:
-                    logging.info(f"Last processed batch ID: {result.batch_id}")
-                    return result.batch_id
+                    logging.info(f"Last processed batch ID: {result.batch_index}")
+                    return result.batch_index
                 else:
                     logging.info("No processed batches found")
                     return None

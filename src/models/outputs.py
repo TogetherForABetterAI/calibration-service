@@ -10,7 +10,7 @@ class ModelOutputs(Base):
     __tablename__ = "model_outputs"
 
     session_id = Column(UUID(as_uuid=True), nullable=False, primary_key=True)
-    batch_id = Column(Integer, nullable=False, primary_key=True)
+    batch_index = Column(Integer, nullable=False, primary_key=True)
     user_id = Column(UUID(as_uuid=True))
     timestamp = Column(DateTime, default=datetime.utcnow)
     outputs = Column(LargeBinary)

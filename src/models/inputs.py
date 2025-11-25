@@ -11,7 +11,7 @@ class ModelInputs(Base):
     user_id = Column(UUID(as_uuid=True), primary_key=True)
     session_id = Column(UUID(as_uuid=True), primary_key=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    batch_id = Column(Integer, nullable=False)
+    batch_index = Column(Integer, nullable=False)
     inputs = Column(LargeBinary)
     status = Column(String, nullable=False)
 
