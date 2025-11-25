@@ -9,10 +9,10 @@ class Scores(Base):
 
     session_id = Column(UUID(as_uuid=True), primary_key=True)
     user_id = Column(UUID(as_uuid=True))
-    batch_index = Column(Integer, nullable=False) # The last batch id that produced these scores
+    batch_index = Column(Integer, nullable=False) # The last batch id that produced the vec_scores
     status = Column(String, nullable=False)
-    scores = Column(LargeBinary)
+    vec_scores = Column(LargeBinary)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
     def __repr__(self) -> str:
-        return f"Scores(user_id={self.user_id}, status={self.status}, scores={self.scores}, batch_index={self.batch_index})"
+        return f"Scores(user_id={self.user_id}, status={self.status}, vec_scores={self.vec_scores}, batch_index={self.batch_index})"

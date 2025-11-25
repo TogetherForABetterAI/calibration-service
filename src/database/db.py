@@ -6,7 +6,7 @@ from uuid import UUID
 import logging
 from src.models.inputs import ModelInputs
 from src.models.outputs import ModelOutputs
-from src.models.scores import Scores
+from src.models.vec_scores import Scores
 from src.lib.db_engine import Base
 
 class Database:
@@ -24,9 +24,9 @@ class Database:
             logging.error(f"Error creating tables: {e}")
 
             
-    def update_scores(self, session_id: UUID, scores: bytes):
+    def update_vec_scores(self, session_id: UUID, vec_scores: bytes):
         """
-        Update scores to the database for a given session_id.
+        Update vec_scores to the database for a given session_id.
         If a record with the session_id exists, update it; otherwise, insert a new record
         """
         with Session(self.engine) as session:
@@ -35,16 +35,16 @@ class Database:
                 result = session.execute(stmt).scalar_one_or_none()
 
                 if result:
-                    result.scores = scores
-                    logging.info(f"Updating scores for session_id: {session_id}")
+                    result.vec_scores = vec_scores
+                    logging.info(f"Updating vec_scores for session_id: {session_id}")
                 else:
-                    new_score = Scores(session_id=session_id, scores=scores)
+                    new_score = Scores(session_id=session_id, vec_scores=vec_scores)
                     session.add(new_score)
-                    logging.info(f"Inserting new scores for session_id: {session_id}")
+                    logging.info(f"Inserting new vec_scores for session_id: {session_id}")
 
                 session.commit()
             except SQLAlchemyError as e:
-                logging.error(f"Error writing scores for session_id {session_id}: {e}")
+                logging.error(f"Error writing vec_scores for session_id {session_id}: {e}")
                 session.rollback()
             finally:
                 session.close()
@@ -99,10 +99,10 @@ class Database:
             finally:
                 session.close()
     
-    def get_scores_from_session(self, session_id: UUID) -> bytes | None:
+    def get_vec_scores_from_session(self, session_id: UUID) -> bytes | None:
         """
-        Read scores from the database for a given session_id.
-        Returns the scores as bytes if found, otherwise None.
+        Read vec_scores from the database for a given session_id.
+        Returns the vec_scores as bytes if found, otherwise None.
         """
         with Session(self.engine) as session:
         
@@ -112,12 +112,12 @@ class Database:
 
                 if result:
                     logging.info(f"Scores found for session_id: {session_id}")
-                    return result.scores
+                    return result.vec_scores
                 else:
-                    logging.info(f"No scores found for session_id: {session_id}")
+                    logging.info(f"No vec_scores found for session_id: {session_id}")
                     return []
             except SQLAlchemyError as e:
-                logging.error(f"Error reading scores for session_id {session_id}: {e}")
+                logging.error(f"Error reading vec_scores for session_id {session_id}: {e}")
                 return None
             finally:
                 session.close()
