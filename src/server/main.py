@@ -25,12 +25,7 @@ class Server():
         self.listener = Listener(
             middleware=self.middleware,
             channel=channel,
-            upper_bound_clients=self.config.server_config.upper_bound_clients,
-            lower_bound_clients=self.config.server_config.lower_bound_clients,
-            replica_id=self.config.server_config.replica_id,
-            replica_timeout_seconds=self.config.server_config.replica_timeout_seconds,
-            master_replica_id=self.config.server_config.master_replica_id,
-            initial_timeout=self.config.server_config.initial_timeout,
+            config=self.config.server_config,
             cm_middleware_factory=cm_middleware_factory,
             report_builder_factory=report_builder_factory,
             logger=self.logger,

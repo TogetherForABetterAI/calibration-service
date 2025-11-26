@@ -20,8 +20,8 @@ class BatchHandler:
     ):
         self.client_id = client_id
         self._report_builder = report_builder
-        self._labeled_eof = False
-        self._replies_eof = False
+        self._inputs_eof = False
+        self._outputs_eof = False
         self._batches: Dict[int, Dict] = {}
         self._on_eof = on_eof
         self._db = database
@@ -38,22 +38,19 @@ class BatchHandler:
 
     def _build_state(self):
         inputs = self._db.get_inputs_from_session(self._session_id)
-        if len(inputs) > 0:
-            for input in inputs:
-                self._restore_inputs_data(input)
+        for input in inputs:
+            self._restore_inputs_data(input)
             
         outputs = self._db.get_outputs_from_session(self._session_id)
-        if len(outputs) > 0:
-            for output in outputs:
-                self._handle_predictions_message(None, output)
+        for output in outputs:
+            self._restore_outputs_data(output)
          
     def _restore_inputs_data(self, body):
         message = dataset_service_pb2.DataBatchLabeled()
         message.ParseFromString(body)
         images = self._process_input_data(message.data)
         self.store_inputs(
-            message.batch_index, images, message.is_last_batch, list(message.labels)
-        )
+            message.batch_index, images, message.is_last_batch, np.array(list(message.labels)))
         
     def _restore_outputs_data(self, body):
         message = calibration_pb2.Predictions()
@@ -111,6 +108,9 @@ class BatchHandler:
             # scores = run_calibration_algorithm(probs) 
 
             if message.eof:
+                self._outputs_eof = True
+
+            if self._inputs_eof and self._outputs_eof:
                 self.send_report()
                 self._on_eof() 
 
@@ -134,16 +134,15 @@ class BatchHandler:
                 )
                 return
 
-            self.store_inputs(message.batch_index, images, list(message.labels))
+            self.store_inputs(message.batch_index, images, np.array(list(message.labels)))
 
             if message.is_last_batch:
-                self._labeled_eof = True
+                self._inputs_eof = True
 
-            if self._labeled_eof and self._replies_eof:
-                self._send_report()
-
-            if self._on_eof and self._labeled_eof and self._replies_eof:
-                self._on_eof()  # Received both EOFs, time to finish consuming
+            if self._inputs_eof and self._outputs_eof:
+                self.send_report()
+                self._on_eof() 
+                
         except Exception as e:
             logging.error(
                 f"Error handling data message for client {self.client_id}: {e}"

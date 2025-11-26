@@ -18,7 +18,8 @@ class ServerConfig:
         self.replica_id = int(os.getenv("REPLICA_ID", "1"))
         self.replica_timeout_seconds = int(os.getenv("REPLICA_TIMEOUT_SECONDS", "180"))
         self.master_replica_id = int(os.getenv("MASTER_REPLICA_ID", "1"))
-        self.initial_timeout = int(os.getenv("INITIAL_TIMEOUT", "30"))  
+        self.initial_timeout = int(os.getenv("INITIAL_TIMEOUT", "30")) 
+        self.client_timeout_seconds = int(os.getenv("CLIENT_TIMEOUT_SECONDS", "60")) 
 
 
 class MiddlewareConfig:

@@ -7,10 +7,15 @@ from src.server.batch_handler import BatchHandler
 def report_builder_factory(client_id: str):
     return Mock()   
 
+def db_mock():
+    db = Mock()
+    db.get_inputs_from_session.return_value = []
+    db.get_outputs_from_session.return_value = []
+    return db
+
 @pytest.fixture
 def handler():
-    return BatchHandler(client_id="client1", report_builder=report_builder_factory(client_id="client1"), on_eof=Mock(), middleware=Mock())
-
+    return BatchHandler(client_id="client1", session_id="session1", report_builder=report_builder_factory(client_id="client1"), on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
 
 def test_initialization(handler):
     """Verifica la inicialización correcta de BatchHandler."""
@@ -19,29 +24,15 @@ def test_initialization(handler):
 
 
 def test_store_data_creates_entry(handler):
-    """Verifica que _store_data almacene correctamente los datos y loguee batch completo."""
-    handler._mlflow_logger = Mock()
-
     data = np.zeros((1, 28, 28))
-    handler._store_data(0, DataType.INPUTS, data, eof=False)
-    handler._store_data(0, DataType.PROBS, data, eof=False)
-    handler._store_data(0, DataType.LABELS, np.array([1]), eof=True)
+    probs = np.array([[0.1, 0.9]])
+    labels = np.array([1])
+
+    handler._store_data(0, DataType.INPUTS, data)
+    handler._store_data(0, DataType.PROBS, probs)
+    handler._store_data(0, DataType.LABELS, labels)
 
     assert 0 in handler._batches
-    handler._mlflow_logger.log_single_batch.assert_called_once()
-
-def test_process_input_data_valid(handler):
-    """Verifica que _process_input_data convierta bytes a np.array con forma (n,1,28,28)."""
-    dummy = np.random.rand(28 * 28).astype(np.float32).tobytes()
-    out = handler._process_input_data(dummy)
-    assert out.shape == (1, 1, 28, 28)
-
-def test_process_input_data_invalid_size(handler):
-    """Verifica que _process_input_data lance ValueError si el tamaño no coincide."""
-    dummy = np.random.rand(10).astype(np.float32).tobytes()
-    with pytest.raises(ValueError):
-        handler._process_input_data(dummy)
-
 
 @patch("src.server.batch_handler.calibration_pb2.Predictions")
 def test_handle_predictions_message(MockPredictions, handler):

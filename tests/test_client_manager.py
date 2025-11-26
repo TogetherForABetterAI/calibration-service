@@ -1,3 +1,4 @@
+import time
 import pytest
 import signal
 from unittest.mock import patch, Mock, MagicMock
@@ -12,15 +13,19 @@ def mock_middleware():
 def client_manager(mock_middleware):
     def report_builder_factory(client_id: str):
         return Mock()
-    return ClientManager(client_id="client123", middleware=mock_middleware, clients_to_remove_queue=None, report_builder=report_builder_factory(client_id="client123"))
+    return ClientManager(client_id="client123", session_id="session123", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(client_id="client123"), database=Mock(), inputs_format=None)
 
 
 def test_initialization(client_manager):
     """Verifica que el ClientManager se inicializa correctamente."""
     assert client_manager.client_id == "client123"
+    assert client_manager.session_id == "session123"
     assert not client_manager.shutdown_initiated
     assert client_manager.middleware is not None
     assert client_manager.clients_to_remove_queue is None
+    assert client_manager.report_builder is not None
+    assert client_manager.database is not None
+    assert client_manager.inputs_format is None
 
 
 def test_handle_shutdown_signal_stops_all(client_manager):
@@ -77,12 +82,43 @@ def test_handle_predictions_message_calls_batchhandler(client_manager):
     mock_batch._handle_predictions_message.assert_called_once_with(None, b"xyz")
 
 
-def test_handle_EOF_message_stops_processing(client_manager):
+@patch("requests.put")
+def test_handle_EOF_message_stops_processing(mock_put, client_manager):
     """Verifica que _handle_EOF_message detenga batch_handler y consumer."""
     client_manager.batch_handler = Mock()
     client_manager.consumer = Mock()
-
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_put.return_value = mock_response
     client_manager._handle_EOF_message()
 
     client_manager.batch_handler.handle_sigterm.assert_called_once()
     client_manager.consumer.handle_sigterm.assert_called_once()
+    
+    
+def test_timeout_triggers_status_update():
+    manager = ClientManager(
+        client_id="123",
+        session_id="abc",
+        middleware=None,
+        clients_to_remove_queue=None,
+        config=type("cfg", (), {"client_timeout_seconds": 0.2}),
+        report_builder=None
+    )
+    with patch("requests.put") as mock_put:
+        # Configure the mock to return a failed response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_put.return_value = mock_response
+        
+        manager.timeout_checker_handler.start()
+        time.sleep(0.3)
+        
+        # Verify the call was made
+        mock_put.assert_called_once()
+        
+        # You could also add assertions here to check if the error was logged
+        # (if you are mocking and capturing the logging output).
+        
+        args, kwargs = mock_put.call_args
+        assert kwargs["json"]["status"] == "TIMEOUT"

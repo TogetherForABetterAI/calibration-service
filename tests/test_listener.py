@@ -21,18 +21,25 @@ def cm_middleware_factory(config):
 
 def report_builder_factory(client_id: str):
     return Mock()
+
+def mock_config():
+    config = Mock()
+    config.client_timeout_seconds = 30
+    config.lower_bound_clients = 2
+    config.upper_bound_clients = 5
+    config.replica_timeout_seconds = 60
+    config.initial_timeout = 10
+    config.replica_id = 1
+    config.master_replica_id = 1
+    return config
+
 @pytest.fixture
 def listener(mock_middleware, mock_channel):
     return Listener(middleware=mock_middleware, 
                     channel=mock_channel, 
                     cm_middleware_factory=cm_middleware_factory, 
                     report_builder_factory=report_builder_factory,
-                    upper_bound_clients=5,
-                    lower_bound_clients=2,
-                    replica_id=1,
-                    replica_timeout_seconds=60,
-                    master_replica_id=1,
-                    initial_timeout=10)
+                    config=mock_config())
 
 
 
@@ -46,14 +53,14 @@ def test_listener_initialization(listener):
 
 
 def test_add_and_remove_client(listener):
-    """Verifica que los métodos _add_client y _remove_handler funcionan correctamente."""
+    """Verifica que los métodos _add_client y _remove_client funcionan correctamente."""
     mock_client = Mock()
     client_id = "client-123"
 
     listener._add_client(client_id, mock_client)
     assert client_id in listener._active_clients
 
-    listener._remove_handler(client_id)
+    listener._remove_client(client_id)
     assert client_id not in listener._active_clients
 
 
