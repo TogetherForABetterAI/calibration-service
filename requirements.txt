@@ -11,3 +11,4 @@ reportlab
 seaborn
 psycopg2-binary
 sqlalchemy
+requests

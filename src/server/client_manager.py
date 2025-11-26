@@ -1,10 +1,12 @@
+from http import HTTPStatus
 import logging
 from multiprocessing import Process, Queue
+import os
 import signal
 from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
-from src.lib.config import MLFLOW_EXCHANGE
-from src.middleware.middleware import Middleware
+import requests
+
 
 
 class ClientManager(Process):
@@ -39,6 +41,7 @@ class ClientManager(Process):
         self.database = database
         self.session_id = session_id
         self.inputs_format = inputs_format
+        self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connections-service:8000")
     
         
         logging.info(f"ClientManager for client {client_id} initialized")
@@ -98,8 +101,24 @@ class ClientManager(Process):
         self.batch_handler._handle_inputs_message(ch, body)
 
 
+    def update_session_status(self):
+        """Update the session status to 'completed' in the connections service."""
+        try:
+            url = f"{self.connections_service_url}/sessions/{self.session_id}/status"
+            headers = {"Content-Type": "application/json"}
+            response = requests.put(url, json={"status": "COMPLETED"}, headers=headers)
+
+            if response.status_code == HTTPStatus.OK:
+                self.logger.info(f"Session {self.session_id} status updated to 'completed'.")
+            else:
+                self.logger.error(f"Failed to update session {self.session_id} status. Response code: {response.status_code}, Response body: {response.text}. Status: COMPLETED")
+        except Exception as e:
+            self.logger.error(f"Error updating session {self.session_id} status: {e}")
+
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
         self.logger.info(f"Received EOF message for client {self.client_id}")
         self.batch_handler.handle_sigterm()
         self.consumer.handle_sigterm()
+        self.update_session_status()
+        
