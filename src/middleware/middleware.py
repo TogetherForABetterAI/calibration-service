@@ -133,6 +133,10 @@ class Middleware:
     def callback_wrapper(self, callback_function):
         self._on_callback = True
         def wrapper(ch, method, properties, body):
+            if not self._is_running:
+                self.cancel_channel_consuming(ch)
+                return
+            
             try:
                 callback_function(ch, method, properties, body)
                 ch.basic_ack(delivery_tag=method.delivery_tag)

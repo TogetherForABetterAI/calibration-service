@@ -1,5 +1,5 @@
 import logging
-from lib.config import INPUTS_EXCHANGE, REPLIES_EXCHANGE
+from src.lib.config import INPUTS_QUEUE_NAME, OUTPUTS_QUEUE_NAME
 
 
 class Consumer:
@@ -20,8 +20,8 @@ class Consumer:
         self.channel = self.middleware.create_channel(prefetch_count=1)  # new channel
         self.client_id = client_id
         self.logger = logger or logging.getLogger(f"consumer-{client_id}")
-        self.inputs_queue_name = f"{client_id}_inputs_queue"
-        self.outputs_queue_name = f"{client_id}_outputs_queue"
+        self.inputs_queue_name = f"{client_id}_{INPUTS_QUEUE_NAME}"
+        self.outputs_queue_name = f"{client_id}_{OUTPUTS_QUEUE_NAME}"
         self.inputs_callback = inputs_callback  # Callback for inputs queue
         self.predictions_callback = predictions_callback  # Callback for replies queue
         self._shutdown_initiated = False
@@ -35,41 +35,23 @@ class Consumer:
         except Exception as e:
             self.logger.error(f"Error in Consumer for client {self.client_id}: {e}")
         finally:
-            self.shutdown()
+            self.finish()
 
     def _inputs_callback(self, ch, method, properties, body):
         """Wrapper callback for inputs queue messages."""
-        if self._shutdown_initiated:
-            self.middleware.stop_consuming(self.channel)
-            # Note: ACK/NACK is handled by middleware's callback_wrapper
-
         if self.inputs_callback:
             self.inputs_callback(ch, method, properties, body)
 
     def _predictions_callback(self, ch, method, properties, body):
         """Wrapper callback for predictions queue messages."""
-        if self._shutdown_initiated:
-            self.middleware.stop_consuming(self.channel)
-        # Note: ACK/NACK is handled by middleware's callback_wrapper
-
         if self.predictions_callback:
             self.predictions_callback(ch, method, properties, body)
 
-    def stop_consuming(self):
-        try:
-            self.middleware.stop_consuming(self.channel)
-            self.logger.info(
-                f"Consumer stopped and channel closed for client {self.client_id}"
-            )
-        except Exception as e:
-            self.logger.error(
-                f"Error stopping consumer for client {self.client_id}: {e}"
-            )
-
     def handle_sigterm(self):
         self._shutdown_initiated = True
+        self.middleware.stop_consuming()
 
-    def shutdown(self):
+    def finish(self):
         """Gracefully shutdown the consumer."""
         self.middleware.close_channel(self.channel)
         self.middleware.close_connection()

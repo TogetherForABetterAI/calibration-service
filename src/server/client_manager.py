@@ -54,6 +54,8 @@ class ClientManager(Process):
         self.last_message_time_lock = threading.Lock()
         self.timeout_checker_handler = threading.Thread(target=self._timeout_checker)
         self.timeout_checker_handler.daemon = True
+
+        self.status_lock = threading.Lock()
         self.status = SessionStatus.IN_PROGRESS
         
         logging.info(f"ClientManager for client {client_id} initialized")
@@ -67,6 +69,7 @@ class ClientManager(Process):
                 if (time() - self.last_message_time > self.client_timeout_seconds):
                     logging.info(f"Client {self.client_id} timed out due to inactivity.")
                     self.update_session_status(SessionStatus.TIMEOUT)
+                    self._initiate_shutdown(source_thread=threading.current_thread())
                     return
 
             for _ in range(int(check_interval * 10)):  
@@ -76,14 +79,24 @@ class ClientManager(Process):
 
 
     def _handle_shutdown_signal(self, signum, frame):
-        """Handle SIGTERM signal for graceful shutdown."""
-        self.logger.info(f"Received SIGTERM signal for client {self.client_id}")
+        """Handle SIGTERM signal for graceful shutdown (or process end)."""
+        self.logger.info(f"Received shutdown signal for client {self.client_id}")
+        self._initiate_shutdown(source_thread=threading.current_thread())
+
+    def _initiate_shutdown(self, source_thread=None):
+        if self.shutdown_initiated:
+            return
+        
         self.shutdown_initiated = True
+        
         if self.consumer:
             self.consumer.handle_sigterm()
         if self.batch_handler:
             self.batch_handler.handle_sigterm()
-        if self.timeout_checker_handler.is_alive():
+            
+        if (self.timeout_checker_handler.is_alive() and 
+            self.timeout_checker_handler is not source_thread): 
+            
             self.timeout_checker_handler.join(timeout=2)
 
 
@@ -145,7 +158,8 @@ class ClientManager(Process):
             url = f"{self.connections_service_url}/sessions/{self.session_id}/status"
             headers = {"Content-Type": "application/json"}
             response = requests.put(url, json={"status": session_status.name()}, headers=headers)
-            self.status = session_status
+            with self.status_lock:
+                self.status = session_status
 
             if response.status_code == HTTPStatus.OK:
                 self.logger.info(f"Session {self.session_id} status updated to {session_status.name()}.")
