@@ -28,12 +28,12 @@ class ReportBuilder:
     con estructura y estilo compatibles con los informes del INTI.
     """
 
-    def __init__(self, client_id, email_sender, email_password):
-        self._client_id = client_id
+    def __init__(self, user_id, email_sender, email_password):
+        self._user_id = user_id
         self.email_sender = email_sender
         self.email_password = email_password
         os.makedirs("reports", exist_ok=True)
-        self._pdf_path = f"reports/{self._client_id}.pdf"
+        self._pdf_path = f"reports/{self._user_id}.pdf"
 
         # Inicializar documento base
         self._doc = SimpleDocTemplate(
@@ -60,7 +60,7 @@ class ReportBuilder:
         """
         Construye el PDF de evaluación completo a partir de las predicciones y etiquetas reales.
         """
-        logging.info(f"Generando reporte institucional para cliente {self._client_id}")
+        logging.info(f"Generando reporte institucional para cliente {self._user_id}")
 
         if y_true is None or probs is None:
             raise ValueError("Los datos de entrada (y_true o probs) no pueden ser None.")
@@ -93,12 +93,12 @@ class ReportBuilder:
         story.append(Spacer(1, 0.2*cm))
         story.append(Paragraph("Informe de Evaluación Metrológica de Modelo de Inteligencia Artificial", self._styles["CenterTitle"]))
         story.append(Spacer(1, 1*cm))
-        story.append(Paragraph(f"Cliente: <b>{self._client_id}</b>", self._styles["Normal"]))
+        story.append(Paragraph(f"Cliente: <b>{self._user_id}</b>", self._styles["Normal"]))
         today = np.datetime64('today').astype(str)
         year, month, day = today.split('-')
-        client_id_short = self._client_id.split('_')[0]
+        user_id_short = self._user_id.split('_')[0]
         story.append(Paragraph(f"Fecha de evaluación: <b>{today}</b>", self._styles["Normal"]))
-        story.append(Paragraph(f"Código de informe: <b>EVAL-INTI-{client_id_short}/{year}</b>", self._styles["Normal"]))
+        story.append(Paragraph(f"Código de informe: <b>EVAL-INTI-{user_id_short}/{year}</b>", self._styles["Normal"]))
         story.append(PageBreak())
 
         # --- MÉTRICAS ---
@@ -240,7 +240,7 @@ class ReportBuilder:
         with open(self._pdf_path, "rb") as f:
             message.add_attachment(
                 f.read(), maintype="application", subtype="pdf",
-                filename=f"Evaluacion_INTI_{self._client_id}.pdf"
+                filename=f"Evaluacion_INTI_{self._user_id}.pdf"
             )
 
         cfg = initialize_config()

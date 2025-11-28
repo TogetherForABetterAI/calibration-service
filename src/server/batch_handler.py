@@ -10,7 +10,7 @@ from src.lib.report_builder import ReportBuilder
 class BatchHandler:
     def __init__(
         self,
-        client_id: str,
+        user_id: str,
         session_id: str,
         on_eof,
         report_builder,
@@ -18,7 +18,7 @@ class BatchHandler:
         database=None,
         inputs_format=None,
     ):
-        self.client_id = client_id
+        self.user_id = user_id
         self._report_builder = report_builder
         self._inputs_eof = False
         self._outputs_eof = False
@@ -27,7 +27,7 @@ class BatchHandler:
         self._db = database
         self._middleware = middleware
         self._channel = self._middleware.create_channel()
-        self._scores = self._db.get_scores_from_session(client_id)
+        self._scores = self._db.get_scores_from_session(user_id)
         self._session_id = session_id
         self._inputs_format = inputs_format
         self._build_state()
@@ -100,7 +100,7 @@ class BatchHandler:
             if message.batch_index in self._batches and self._batches[message.batch_index][DataType.PROBS] is not None:
                 # Duplicate batch index received
                 logging.warning(
-                    f"Duplicate probabilities for batch {message.batch_index} from client {self.client_id}"
+                    f"Duplicate probabilities for batch {message.batch_index} from client {self.user_id}"
                 )
                 return
 
@@ -116,7 +116,7 @@ class BatchHandler:
 
         except Exception as e:
             logging.error(
-                f"Error handling probability message for client {self.client_id}: {e}"
+                f"Error handling probability message for client {self.user_id}: {e}"
             )
             raise e
         
@@ -126,11 +126,14 @@ class BatchHandler:
             message = dataset_service_pb2.DataBatchLabeled()
             message.ParseFromString(body)
             images = self._process_input_data(message.data)
+            logging.info(
+                f"action: receive_inputs | result: success | batch_index: {message.batch_index} | is_last_batch: {message.is_last_batch}"
+            )
             
             if message.batch_index in self._batches and self._batches[message.batch_index][DataType.INPUTS] is not None:
                 # Duplicate batch index received
                 logging.warning(
-                    f"Duplicate inputs for batch {message.batch_index} from client {self.client_id}"
+                    f"Duplicate inputs for batch {message.batch_index} from client {self.user_id}"
                 )
                 return
 
@@ -145,7 +148,7 @@ class BatchHandler:
                 
         except Exception as e:
             logging.error(
-                f"Error handling data message for client {self.client_id}: {e}"
+                f"Error handling data message for client {self.user_id}: {e}"
             )
             raise e
         
@@ -218,7 +221,7 @@ class BatchHandler:
                 mlflow_msg.pred.append(prob)
 
             mlflow_msg.batch_index = batch_index
-            mlflow_msg.client_id = self.client_id
+            mlflow_msg.client_id = self.user_id
             mlflow_msg.session_id = self._session_id
             mlflow_msg.data = entry[DataType.INPUTS].tobytes()
             mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
@@ -229,4 +232,11 @@ class BatchHandler:
                 exchange_name=MLFLOW_EXCHANGE,
                 routing_key=MLFLOW_ROUTING_KEY,
                 body=mlflow_body,
+            )
+            logging.info(
+                f"action: send_mlflow_message | "
+                f"user_id: {self.user_id} | "
+                f"session_id: {self._session_id} | "
+                f"batch_index: {batch_index} | "
+                f"result: success"
             )

@@ -73,7 +73,7 @@ def test_integration_shutdown_runs_without_errors(mock_put, mock_global_config, 
    
     middleware_queue = Queue()
    
-    notification = [b'{"client_id": "client-001", "session_id": "session-001", "inputs_format": "(28,28,1)"}', b'{"client_id": "client-002", "session_id": "session-002", "inputs_format": "(28,28,1)"}', b'{"invalid_json": "missing_closing_bracket"}']
+    notification = [b'{"user_id": "client-001", "session_id": "session-001", "inputs_format": "(28,28,1)"}', b'{"user_id": "client-002", "session_id": "session-002", "inputs_format": "(28,28,1)"}', b'{"invalid_json": "missing_closing_bracket"}']
     fake_listener_middleware = FakeMiddleware(config=mock_global_config.middleware_config, messages={CONNECTION_QUEUE_NAME: notification}, queue=middleware_queue, module="listener")
 
     initialize_logging(mock_global_config.log_level.upper())
@@ -104,8 +104,8 @@ def test_integration_shutdown_runs_without_errors(mock_put, mock_global_config, 
     assert fake_listener_middleware.close_connection_called == True
     assert fake_listener_middleware.is_running() == False
     assert len(fake_listener_middleware.msg_ack) == 3
-    assert fake_listener_middleware.msg_ack[0] == b'{"client_id": "client-001", "session_id": "session-001", "inputs_format": "(28,28,1)"}'
-    assert fake_listener_middleware.msg_ack[1] == b'{"client_id": "client-002", "session_id": "session-002", "inputs_format": "(28,28,1)"}'
+    assert fake_listener_middleware.msg_ack[0] == b'{"user_id": "client-001", "session_id": "session-001", "inputs_format": "(28,28,1)"}'
+    assert fake_listener_middleware.msg_ack[1] == b'{"user_id": "client-002", "session_id": "session-002", "inputs_format": "(28,28,1)"}'
     assert fake_listener_middleware.msg_ack[2] == b'{"invalid_json": "missing_closing_bracket"}'
     assert fake_listener_middleware.stop_consuming_called == True
     assert fake_listener_middleware.close_channel_called == True

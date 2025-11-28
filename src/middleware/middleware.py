@@ -1,7 +1,7 @@
 import logging
 import pika
 
-from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
+from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
 
 class Middleware:
     def __init__(self, config):
@@ -30,13 +30,9 @@ class Middleware:
     def setup_connection_queue(self, channel, durable=False):
         queue_name = CONNECTION_QUEUE_NAME
         connection_exchange = CONNECTION_EXCHANGE
-        coordinator_exchange = COORDINATOR_EXCHANGE # Provisorio. Hasta que este el microservicio y hagamos la creacion desde ahi.
 
         self.declare_exchange(
             channel, connection_exchange, exchange_type="fanout", durable=durable
-        )
-        self.declare_exchange(
-            channel, coordinator_exchange, exchange_type="direct", durable=durable
         )
 
         # Declare the queue

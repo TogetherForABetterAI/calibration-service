@@ -19,7 +19,7 @@ def mock_channel():
 def cm_middleware_factory(config):
     return Mock()
 
-def report_builder_factory(client_id: str):
+def report_builder_factory(user_id: str):
     return Mock()
 
 def mock_config():
@@ -55,13 +55,13 @@ def test_listener_initialization(listener):
 def test_add_and_remove_client(listener):
     """Verifica que los métodos _add_client y _remove_client funcionan correctamente."""
     mock_client = Mock()
-    client_id = "client-123"
+    user_id = "client-123"
 
-    listener._add_client(client_id, mock_client)
-    assert client_id in listener._active_clients
+    listener._add_client(user_id, mock_client)
+    assert user_id in listener._active_clients
 
-    listener._remove_client(client_id)
-    assert client_id not in listener._active_clients
+    listener._remove_client(user_id)
+    assert user_id not in listener._active_clients
 
 
 def test_handle_new_client_success(listener):
@@ -70,7 +70,7 @@ def test_handle_new_client_success(listener):
         mock_manager = Mock()
         MockClientManager.return_value = mock_manager
 
-        notification = {"client_id": "client-001"}
+        notification = {"user_id": "client-001"}
         body = json.dumps(notification).encode("utf-8")
 
         listener._handle_new_client(None, None, None, body)
@@ -81,7 +81,7 @@ def test_handle_new_client_success(listener):
 
 
 def test_handle_new_client_missing_id(listener):
-    """Verifica que si falta el client_id, no se lanza un proceso."""
+    """Verifica que si falta el user_id, no se lanza un proceso."""
     with patch("src.server.listener.ClientManager") as MockClientManager:
         notification = {"foo": "bar"}
         body = json.dumps(notification).encode("utf-8")
@@ -91,16 +91,16 @@ def test_handle_new_client_missing_id(listener):
 
 def test_monitor_removals_removes_client(listener):
     """Verifica que el monitor elimina clientes cuando llegan IDs a la queue."""
-    client_id = "client-xyz"
+    user_id = "client-xyz"
     mock_client = Mock()
-    listener._add_client(client_id, mock_client)
+    listener._add_client(user_id, mock_client)
 
     # Agregamos una tarea de eliminación y una señal de fin
-    listener.clients_to_remove_queue.put(client_id)
+    listener.clients_to_remove_queue.put(user_id)
     listener.clients_to_remove_queue.put(None)
 
     thread = threading.Thread(target=listener._monitor_removals)
     thread.start()
     thread.join(timeout=1)
 
-    assert client_id not in listener._active_clients
+    assert user_id not in listener._active_clients

@@ -16,7 +16,7 @@ from src.lib.session_status import SessionStatus
 class ClientManager(Process):
     def __init__(
         self,
-        client_id: str,
+        user_id: str,
         session_id: str,
         middleware,
         clients_to_remove_queue: Queue,
@@ -29,14 +29,14 @@ class ClientManager(Process):
         Initialize ClientManager as a Process.
 
         Args:
-            client_id: The client ID (parsed by Listener before process creation)
+            user_id: The client ID (parsed by Listener before process creation)
             middleware_config: Middleware config object (NOT the middleware instance itself)
             clients_to_remove_queue: Queue to send removal requests to parent process
         """
         super().__init__()
-        self.logger = logging.getLogger(f"client-manager-{client_id}")
-        self.logger.info(f"Initializing ClientManager for client {client_id}")
-        self.client_id = client_id
+        self.logger = logging.getLogger(f"client-manager-{user_id}")
+        self.logger.info(f"Initializing ClientManager for client {user_id}")
+        self.user_id = user_id
         self.middleware = middleware
         self.clients_to_remove_queue = clients_to_remove_queue
         self.consumer = None
@@ -58,7 +58,7 @@ class ClientManager(Process):
         self.status_lock = threading.Lock()
         self.status = SessionStatus.IN_PROGRESS
         
-        logging.info(f"ClientManager for client {client_id} initialized")
+        logging.info(f"ClientManager for client {user_id} initialized")
 
     def _timeout_checker(self):
         """Periodically check for timeouts in BatchHandler."""
@@ -67,7 +67,7 @@ class ClientManager(Process):
         while not self.shutdown_initiated:
             with self.last_message_time_lock:
                 if (time() - self.last_message_time > self.client_timeout_seconds):
-                    logging.info(f"Client {self.client_id} timed out due to inactivity.")
+                    logging.info(f"Client {self.user_id} timed out due to inactivity.")
                     self.update_session_status(SessionStatus.TIMEOUT)
                     self._initiate_shutdown(source_thread=threading.current_thread())
                     return
@@ -80,7 +80,7 @@ class ClientManager(Process):
 
     def _handle_shutdown_signal(self, signum, frame):
         """Handle SIGTERM signal for graceful shutdown (or process end)."""
-        self.logger.info(f"Received shutdown signal for client {self.client_id}")
+        self.logger.info(f"Received shutdown signal for client {self.user_id}")
         self._initiate_shutdown(source_thread=threading.current_thread())
 
     def _initiate_shutdown(self, source_thread=None):
@@ -109,9 +109,9 @@ class ClientManager(Process):
         self.timeout_checker_handler.start()
 
         try:
-            logging.info(f"ClientManager process started for client {self.client_id}")
+            logging.info(f"ClientManager process started for client {self.user_id}")
             self.batch_handler = BatchHandler(
-                client_id=self.client_id,
+                user_id=self.user_id,
                 session_id=self.session_id,
                 on_eof=self._handle_EOF_message,    
                 report_builder=self.report_builder,
@@ -122,7 +122,7 @@ class ClientManager(Process):
 
             self.consumer = Consumer(
                 middleware=self.middleware,
-                client_id=self.client_id,
+                user_id=self.user_id,
                 predictions_callback=self._handle_predictions_message,
                 inputs_callback=self._handle_inputs_message,
                 logger=self.logger,
@@ -132,21 +132,21 @@ class ClientManager(Process):
                 self.consumer.start()  
         
             if not self.shutdown_initiated and self.clients_to_remove_queue:
-                self.clients_to_remove_queue.put(self.client_id)
+                self.clients_to_remove_queue.put(self.user_id)
                 
         except Exception as e:
-            self.logger.error(f"Error setting up client {self.client_id}: {e}")
+            self.logger.error(f"Error setting up client {self.user_id}: {e}")
 
     def _handle_predictions_message(self, ch, method, properties, body):
         """Callback for replies queue - calls BatchHandler._handle_predictions_message"""
-        self.logger.info(f"Received predictions message for client {self.client_id}")
+        self.logger.info(f"Received predictions message for client {self.user_id}")
         with self.last_message_time_lock:
             self.last_message_time = time()
         self.batch_handler._handle_predictions_message(ch, body)
 
     def _handle_inputs_message(self, ch, method, properties, body):
         """Callback for inputs queue - calls BatchHandler._handle_inputs_message"""
-        self.logger.info(f"Received inputs message for client {self.client_id}")
+        self.logger.info(f"Received inputs message for client {self.user_id}")
         with self.last_message_time_lock:
             self.last_message_time = time()
         self.batch_handler._handle_inputs_message(ch, body)
@@ -170,7 +170,7 @@ class ClientManager(Process):
 
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
-        self.logger.info(f"Received EOF message for client {self.client_id}")
+        self.logger.info(f"Received EOF message for client {self.user_id}")
         self.consumer.handle_sigterm()
         self.batch_handler.handle_sigterm()
         self.update_session_status(SessionStatus.COMPLETED)

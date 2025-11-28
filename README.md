@@ -32,7 +32,7 @@ src/
 ```python
 # Client calls gRPC endpoint
 NotifyNewClient({
-    client_id: "client_123",
+    user_id: "client_123",
     inter_queue_name: "data_dispatcher_to_client_123",
     client_queue_name: "sdk_to_client_123"
 })

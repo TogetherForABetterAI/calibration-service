@@ -11,14 +11,14 @@ def mock_middleware():
 
 @pytest.fixture
 def client_manager(mock_middleware):
-    def report_builder_factory(client_id: str):
+    def report_builder_factory(user_id: str):
         return Mock()
-    return ClientManager(client_id="client123", session_id="session123", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(client_id="client123"), database=Mock(), inputs_format=None)
+    return ClientManager(user_id="client123", session_id="session123", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(user_id="client123"), database=Mock(), inputs_format=None)
 
 
 def test_initialization(client_manager):
     """Verifica que el ClientManager se inicializa correctamente."""
-    assert client_manager.client_id == "client123"
+    assert client_manager.user_id == "client123"
     assert client_manager.session_id == "session123"
     assert not client_manager.shutdown_initiated
     assert client_manager.middleware is not None
@@ -98,7 +98,7 @@ def test_handle_EOF_message_stops_processing(mock_put, client_manager):
     
 def test_timeout_triggers_status_update():
     manager = ClientManager(
-        client_id="123",
+        user_id="123",
         session_id="abc",
         middleware=None,
         clients_to_remove_queue=None,

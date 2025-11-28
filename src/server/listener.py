@@ -62,11 +62,11 @@ class Listener:
         """Monitor the removal queue and remove finished clients from _active_clients"""
         while True:
             try:
-                client_id = self.clients_to_remove_queue.get(block=True)
-                if client_id is None:
+                user_id = self.clients_to_remove_queue.get(block=True)
+                if user_id is None:
                     break
 
-                self._remove_client(client_id)
+                self._remove_client(user_id)
             except Exception as e:
                 self.logger.error(f"Error in _monitor_removals: {e}")
                 continue
@@ -75,15 +75,15 @@ class Listener:
         """Finaliza todos los procesos ClientManager activos."""
         self.logger.info("Shutting down all client managers...")
         with self._active_clients_lock:
-            for client_id, handler in list(self._active_clients.items()):
+            for user_id, handler in list(self._active_clients.items()):
                 if handler.is_alive():
                     try:
                         handler.terminate()
                         handler.join(timeout=5)
                     except Exception as e:
-                        self.logger.error(f"Error shutting down {client_id}: {e}")
+                        self.logger.error(f"Error shutting down {user_id}: {e}")
                 else:
-                    self.logger.debug(f"ClientManager {client_id} already stopped")
+                    self.logger.debug(f"ClientManager {user_id} already stopped")
 
     def _get_active_clients_count(self) -> int:
         """Obtener el número actual de clientes activos (thread-safe)."""
@@ -112,69 +112,69 @@ class Listener:
         self.logger.info("Received new client connection notification")
 
         notification = json.loads(body.decode("utf-8"))
-        client_id = notification.get("client_id")
+        user_id = notification.get("user_id")
         session_id = notification.get("session_id")
         inputs_format = parse_inputs_format(notification.get("inputs_format"))
 
-        if not client_id:
+        if not user_id:
             self.logger.info(
-                f"Client notification missing client_id: {notification}"
+                f"Client notification missing user_id: {notification}"
             )
             return  
         
 
         if not self.middleware.is_running():
             self.logger.info(
-                f"Shutdown initiated, ignoring new client {client_id}"
+                f"Shutdown initiated, ignoring new client {user_id}"
             )
             return
         
         client_manager = ClientManager(
-            client_id=client_id,
+            user_id=user_id,
             session_id=session_id,
             middleware=self.cm_middleware_factory(self.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
-            report_builder=self.report_builder_factory(client_id=client_id),
+            report_builder=self.report_builder_factory(user_id=user_id),
             config=self.config,
             database=self.database,
             inputs_format=inputs_format,
         )
-        logging.info(f"Created ClientManager for client {client_id}")
-        self._add_client(client_id, client_manager)
+        logging.info(f"Created ClientManager for client {user_id}")
+        self._add_client(user_id, client_manager)
 
-        logging.info(f"Starting ClientManager for client {client_id}")
+        logging.info(f"Starting ClientManager for client {user_id}")
         client_manager.start()
 
-    def _remove_client(self, client_id: str):
+    def _remove_client(self, user_id: str):
         """Remove a finished client manager from the active clients dict"""
         with self._active_clients_lock:
-            if client_id in self._active_clients:
-                del self._active_clients[client_id]
-                self.logger.info(f"Removed ClientManager for client {client_id}")
+            if user_id in self._active_clients:
+                del self._active_clients[user_id]
+                self.logger.info(f"Removed ClientManager for client {user_id}")
 
-    def _add_client(self, client_id: str, handler: ClientManager):
+    def _add_client(self, user_id: str, handler: ClientManager):
         """Add a new client manager to the active clients dict"""
         with self._active_clients_lock:
-            if client_id not in self._active_clients:
-                self._active_clients[client_id] = handler
-                self.logger.info(f"Added ClientManager for client {client_id}")
+            if user_id not in self._active_clients:
+                self._active_clients[user_id] = handler
+                self.logger.info(f"Added ClientManager for client {user_id}")
 
     def terminate_all_clients(self):
         """Join all active ClientManager processes."""
         self.logger.info("Joining all client managers...")
         active_clients = list(self._active_clients.items())
         for (
-            client_id,
+            user_id,
             handler,
         ) in active_clients:
             if handler.is_alive():
                 try:
                     os.kill(handler.pid, signal.SIGTERM)
-                    logging.info(f"Terminated ClientManager for client {client_id}...")
+                    logging.info(f"Terminated ClientManager for client {user_id}...")
                     handler.join()
                 except Exception as e:
                     self.logger.error(
-                        f"Error shutting down ClientManager {client_id}: {e}"
+                        f"Error shutting down ClientManager {user_id}: {e}"
                     )
 
     def finish(self):

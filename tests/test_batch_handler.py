@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from src.lib.data_types import DataType
 from src.server.batch_handler import BatchHandler
 
-def report_builder_factory(client_id: str):
+def report_builder_factory(user_id: str):
     return Mock()   
 
 def db_mock():
@@ -15,11 +15,11 @@ def db_mock():
 
 @pytest.fixture
 def handler():
-    return BatchHandler(client_id="client1", session_id="session1", report_builder=report_builder_factory(client_id="client1"), on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
+    return BatchHandler(user_id="client1", session_id="session1", report_builder=report_builder_factory(user_id="client1"), on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
 
 def test_initialization(handler):
     """Verifica la inicialización correcta de BatchHandler."""
-    assert handler.client_id == "client1"
+    assert handler.user_id == "client1"
     assert handler._batches == {}
 
 

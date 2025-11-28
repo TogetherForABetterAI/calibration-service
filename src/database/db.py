@@ -6,7 +6,7 @@ from uuid import UUID
 import logging
 from src.models.inputs import ModelInputs
 from src.models.outputs import ModelOutputs
-from src.models.vec_scores import Scores
+from src.models.scores import Scores
 from src.lib.db_engine import Base
 
 class Database:
@@ -185,6 +185,28 @@ class Database:
                     return None
             except SQLAlchemyError as e:
                 logging.error(f"Error retrieving last processed batch ID: {e}")
+                return None
+            finally:
+                session.close()
+                
+    def get_scores_from_session(self, session_id: UUID) -> bytes | None:
+        """
+        Read scores from the database for a given session_id.
+        Returns the scores as bytes if found, otherwise None.
+        """
+        with Session(self.engine) as session:
+            try:
+                stmt = select(Scores).where(Scores.session_id == session_id)
+                result = session.execute(stmt).scalar_one_or_none()
+
+                if result:
+                    logging.info(f"Scores found for session_id: {session_id}")
+                    return result.scores
+                else:
+                    logging.info(f"No scores found for session_id: {session_id}")
+                    return []
+            except SQLAlchemyError as e:
+                logging.error(f"Error reading scores for session_id {session_id}: {e}")
                 return None
             finally:
                 session.close()
