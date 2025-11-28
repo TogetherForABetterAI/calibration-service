@@ -155,7 +155,8 @@ class ClientManager(Process):
         """Update the session status to the given status in the connections service."""
         try:
             logging.info(f"Updating session {self.session_id} status to {session_status.name()}")
-            url = f"{self.connections_service_url}/sessions/{self.session_id}/status"
+            status = session_status.name().lower()
+            url = f"{self.connections_service_url}/sessions/{self.session_id}/status/{status}"
             headers = {"Content-Type": "application/json"}
             response = requests.put(url, json={"status": session_status.name()}, headers=headers)
             with self.status_lock:

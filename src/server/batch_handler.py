@@ -79,9 +79,9 @@ class BatchHandler:
                 y_test.extend(batch[DataType.LABELS])
 
         self._report_builder.build_report(y_test, y_pred)
-        logging.info(f"action: build_report | result: success")
-        #self._report_builder.send_report("guldenjf@gmail.com")
-        logging.info(f"action: send_report | result: success")
+        logging.info(f"action: build_report | result: success | user_id: {self.user_id}")
+        self._report_builder.send_report("guldenjf@gmail.com")
+        logging.info(f"action: send_report | result: success | user_id: {self.user_id}")
 
 
     def _handle_predictions_message(self, ch, body):
