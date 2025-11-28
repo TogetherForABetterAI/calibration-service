@@ -1,9 +1,6 @@
 syntax = "proto3";
 
-package dataset;
-
-// Response containing a batch of data for calibration
-message DataBatch {
+message DataBatchLabeled {
   bytes data = 1;
   repeated int32 labels = 2;
   int32 batch_index = 3;

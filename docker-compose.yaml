@@ -3,13 +3,31 @@ services:
     container_name: calibration-service
     build: .
     env_file: .env
-    ports:
-      - "50052:50052"
+    depends_on:
+      - calibration-db
     volumes:
       - ./reports:/app/reports
       - ./src/proto:/app/src/proto
     networks:
       - tpp-network
+
+  calibration-db:
+    image: postgres:15
+    container_name: calibration-db
+    environment:
+      - POSTGRES_DB=calibration_db
+      - POSTGRES_USER=calibration_user
+      - POSTGRES_PASSWORD=calibration_password
+      - POSTGRES_PORT=5432
+    ports:
+      - "5432:5432"
+    volumes:
+      - calibration_db_data:/var/lib/postgresql/data
+    networks:
+      - tpp-network
+
+volumes:
+  calibration_db_data:
 
 networks:
   tpp-network:

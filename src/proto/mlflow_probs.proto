@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package mlflow_probs;
+
+message PredictionList {
+  repeated float values = 1;
+}
+
+message MlflowProbs {
+  repeated PredictionList pred = 1;
+  int32 batch_index = 2;
+  string client_id = 3;
+  string session_id = 4;
+  bytes data = 5;
+  repeated int32 labels = 6;
+}
+
+

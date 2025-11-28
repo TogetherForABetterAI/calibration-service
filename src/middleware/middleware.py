@@ -3,12 +3,14 @@ import pika
 
 from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
 
-
 class Middleware:
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger("middleware")
+        self._consuming = False
+        self.consumer_tag = None
         self._is_running = False
+        self._on_callback = True
         try:
             self.conn = pika.BlockingConnection(
                 pika.ConnectionParameters(
@@ -27,21 +29,20 @@ class Middleware:
     
     def setup_connection_queue(self, channel, durable=False):
         queue_name = CONNECTION_QUEUE_NAME
-        exchange_name = CONNECTION_EXCHANGE
+        connection_exchange = CONNECTION_EXCHANGE
 
-        # Declare the exchange (fanout type for broadcasting)
         self.declare_exchange(
-            channel, exchange_name, exchange_type="fanout", durable=durable
+            channel, connection_exchange, exchange_type="fanout", durable=durable
         )
 
         # Declare the queue
         self.declare_queue(channel, queue_name, durable=durable)
 
         # Bind the queue to the exchange
-        self.bind_queue(channel, queue_name, exchange_name, routing_key="")
+        self.bind_queue(channel, queue_name, connection_exchange, routing_key="")
 
         self.logger.info(
-            f"Queue '{queue_name}' created and bound to exchange '{exchange_name}'"
+            f"Queue '{queue_name}' created and bound to exchange '{connection_exchange}'"
         )
 
     def create_channel(self, prefetch_count=1):
@@ -92,16 +93,46 @@ class Middleware:
             )
             raise e
 
-    def basic_consume(self, channel, queue_name: str, callback_function):
+    def basic_consume(self, channel, queue_name: str, callback_function) -> str:
         self.logger.info(f"Setting up consumer for queue: {queue_name}")
-        channel.basic_consume(
+        self.consumer_tag = channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
         )
-
+    
+    def basic_send(
+        self, 
+        channel,
+        exchange_name: str,
+        routing_key: str,
+        body: bytes,
+        properties: pika.BasicProperties = None,
+    ):
+        try:
+            channel.basic_publish(
+                exchange=exchange_name,
+                routing_key=routing_key,
+                body=body,
+                properties=properties,
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to send message to exchange '{exchange_name}' "
+                f"with routing key '{routing_key}': {e}"
+            )
+            raise e 
+    
+    def on_callback(self):
+        return self._on_callback
+        
     def callback_wrapper(self, callback_function):
+        self._on_callback = True
         def wrapper(ch, method, properties, body):
+            if not self._is_running:
+                self.cancel_channel_consuming(ch)
+                return
+            
             try:
                 callback_function(ch, method, properties, body)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -112,9 +143,9 @@ class Middleware:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
             if not self._is_running:
-                ch.basic_cancel(consumer_tag=method.consumer_tag)
-                ch.stop_consuming()
+                self.cancel_channel_consuming(ch)
 
+        self._on_callback = False
         return wrapper
 
     def start_consuming(self, channel):
@@ -132,11 +163,19 @@ class Middleware:
                 raise Exception("Cannot close channel while middleware is running")
             
             if channel and channel.is_open:
+                channel.basic_cancel(self.consumer_tag)
+                channel.stop_consuming()
                 channel.close()
-                self.logger.info("RabbitMQ channel closed")
+                self.logger.info("Stopped consuming messages")
         except Exception as e:
             self.logger.error(f"action: rabbitmq_channel_close | result: fail | error: {e}")
 
+    def cancel_channel_consuming(self, channel):
+        if channel and channel.is_open:
+            self.logger.info(f"Cancelling consumer for channel: {channel}")
+            channel.basic_cancel(consumer_tag=self.consumer_tag)
+            channel.stop_consuming()
+            
     def stop_consuming(self):
         self._is_running = False
         self.logger.info("Stopped consuming messages")
@@ -156,6 +195,6 @@ class Middleware:
             self.conn.close()
             self.logger.info("RabbitMQ connection closed")
         except Exception as e:
-            self.logger.error(
-                f"action: rabbitmq_connection_close | result: fail | error: {e}"
-            )
+            self.logger.error(f"Failed to close RabbitMQ connection: {e}")
+            raise e
+        

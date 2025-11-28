@@ -1,3 +1,4 @@
+import time
 import pytest
 import signal
 from unittest.mock import patch, Mock, MagicMock
@@ -10,19 +11,21 @@ def mock_middleware():
 
 @pytest.fixture
 def client_manager(mock_middleware):
-    def mlflow_logger_factory(client_id: str):
+    def report_builder_factory(user_id: str):
         return Mock()
-    def report_builder_factory(client_id: str):
-        return Mock()
-    return ClientManager(client_id="client123", middleware=mock_middleware, remove_client_queue=None, mlflow_logger=mlflow_logger_factory(client_id="client123"), report_builder=report_builder_factory(client_id="client123"))
+    return ClientManager(user_id="client123", session_id="session123", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(user_id="client123"), database=Mock(), inputs_format=None)
 
 
 def test_initialization(client_manager):
     """Verifica que el ClientManager se inicializa correctamente."""
-    assert client_manager.client_id == "client123"
+    assert client_manager.user_id == "client123"
+    assert client_manager.session_id == "session123"
     assert not client_manager.shutdown_initiated
     assert client_manager.middleware is not None
-    assert client_manager.remove_client_queue is None
+    assert client_manager.clients_to_remove_queue is None
+    assert client_manager.report_builder is not None
+    assert client_manager.database is not None
+    assert client_manager.inputs_format is None
 
 
 def test_handle_shutdown_signal_stops_all(client_manager):
@@ -33,8 +36,8 @@ def test_handle_shutdown_signal_stops_all(client_manager):
     client_manager._handle_shutdown_signal(None, None)
 
     assert client_manager.shutdown_initiated is True
-    client_manager.consumer.set_shutdown.assert_called_once()
-    client_manager.batch_handler.stop_processing.assert_called_once()
+    client_manager.consumer.handle_sigterm.assert_called_once()
+    client_manager.batch_handler.handle_sigterm.assert_called_once()
 
 
 @patch("src.server.client_manager.signal.signal")
@@ -47,14 +50,14 @@ def test_run_success(MockConsumer, MockBatchHandler, mock_signal, client_manager
     mock_batch = Mock()
     MockBatchHandler.return_value = mock_batch
 
-    client_manager.remove_client_queue = Mock()
+    client_manager.clients_to_remove_queue = Mock()
 
     client_manager.run()
 
     MockBatchHandler.assert_called_once()
     MockConsumer.assert_called_once()
     mock_consumer.start.assert_called_once()
-    client_manager.remove_client_queue.put.assert_called_once_with("client123")
+    client_manager.clients_to_remove_queue.put.assert_called_once_with("client123")
 
 
 @patch("src.server.client_manager.signal.signal")
@@ -71,28 +74,51 @@ def test_run_with_exception(MockConsumer, MockBatchHandler, mock_signal, client_
     assert "boom" in client_manager.logger.error.call_args[0][0]
 
 
-def test_handle_labeled_message_calls_batchhandler(client_manager):
-    """Verifica que _handle_labeled_message invoque correctamente el handler."""
+def test_handle_predictions_message_calls_batchhandler(client_manager):
+    """Verifica que _handle_predictions_message invoque correctamente el handler."""
     mock_batch = Mock()
     client_manager.batch_handler = mock_batch
-    client_manager._handle_labeled_message(None, None, None, b"123")
-    mock_batch._handle_data_message.assert_called_once_with(b"123")
+    client_manager._handle_predictions_message(None, None, None, b"xyz")
+    mock_batch._handle_predictions_message.assert_called_once_with(None, b"xyz")
 
 
-def test_handle_replies_message_calls_batchhandler(client_manager):
-    """Verifica que _handle_replies_message invoque correctamente el handler."""
-    mock_batch = Mock()
-    client_manager.batch_handler = mock_batch
-    client_manager._handle_replies_message(None, None, None, b"xyz")
-    mock_batch._handle_probability_message.assert_called_once_with(b"xyz")
-
-
-def test_handle_EOF_message_stops_processing(client_manager):
+@patch("requests.put")
+def test_handle_EOF_message_stops_processing(mock_put, client_manager):
     """Verifica que _handle_EOF_message detenga batch_handler y consumer."""
     client_manager.batch_handler = Mock()
     client_manager.consumer = Mock()
-
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_put.return_value = mock_response
     client_manager._handle_EOF_message()
 
-    client_manager.batch_handler.stop_processing.assert_called_once()
-    client_manager.consumer.stop_consuming.assert_called_once()
+    client_manager.batch_handler.handle_sigterm.assert_called_once()
+    client_manager.consumer.handle_sigterm.assert_called_once()
+    
+    
+def test_timeout_triggers_status_update():
+    manager = ClientManager(
+        user_id="123",
+        session_id="abc",
+        middleware=None,
+        clients_to_remove_queue=None,
+        config=type("cfg", (), {"client_timeout_seconds": 0.2}),
+        report_builder=None
+    )
+    with patch("requests.put") as mock_put:
+        # Configure the mock to return a failed response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_put.return_value = mock_response
+        
+        manager.timeout_checker_handler.start()
+        time.sleep(0.3)
+        
+        # Verify the call was made
+        mock_put.assert_called_once()
+        
+        # You could also add assertions here to check if the error was logged
+        # (if you are mocking and capturing the logging output).
+        
+        args, kwargs = mock_put.call_args
+        assert kwargs["json"]["status"] == "TIMEOUT"
