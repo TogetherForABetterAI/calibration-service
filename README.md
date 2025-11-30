@@ -72,7 +72,7 @@ NotifyNewClient({
 RABBITMQ_HOST=rabbitmq
 RABBITMQ_PORT=5672
 RABBITMQ_USER=guest
-RABBITMQ_PASS=guest
+RABBITMQ_PASSWORD=guest
 
 # gRPC Configuration
 GRPC_PORT=50051

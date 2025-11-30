@@ -29,7 +29,7 @@ class MiddlewareConfig:
         self.host = os.getenv("RABBITMQ_HOST", "rabbitmq")
         self.port = int(os.getenv("RABBITMQ_PORT", "5672"))
         self.username = os.getenv("RABBITMQ_USER", "guest")
-        self.password = os.getenv("RABBITMQ_PASS", "guest")
+        self.password = os.getenv("RABBITMQ_PASSWORD", "guest")
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
 
 class GlobalConfig:
