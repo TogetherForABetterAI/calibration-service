@@ -1,12 +1,6 @@
-uvicorn
-mlflow
 pika
 protobuf
 numpy
-boto3
-pandas
-grpcio>=1.75.1
-grpcio-tools>=1.75.1
 reportlab
 seaborn
 psycopg2-binary
