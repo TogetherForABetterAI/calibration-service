@@ -11,10 +11,15 @@ class Middleware:
         self.consumer_tag = None
         self._is_running = False
         self._on_callback = True
+
         try:
+            credentials = pika.PlainCredentials(config.username, config.password)
             self.conn = pika.BlockingConnection(
                 pika.ConnectionParameters(
-                    host=config.host, port=config.port, heartbeat=5000
+                    host=config.host, 
+                    port=config.port, 
+                    credentials=credentials, 
+                    heartbeat=5000
                 )
             )
             self.logger.info(
