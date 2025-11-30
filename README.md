@@ -74,8 +74,6 @@ RABBITMQ_PORT=5672
 RABBITMQ_USER=guest
 RABBITMQ_PASSWORD=guest
 
-# gRPC Configuration
-GRPC_PORT=50051
 
 # MLflow Configuration
 MLFLOW_TRACKING_URI=optional_mlflow_server
