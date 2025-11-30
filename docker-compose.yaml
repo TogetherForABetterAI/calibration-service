@@ -15,12 +15,12 @@ services:
     image: postgres:15
     container_name: calibration-db
     environment:
-      - POSTGRES_DB=calibration_db
-      - POSTGRES_USER=calibration_user
-      - POSTGRES_PASSWORD=calibration_password
-      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=${POSTGRES_PORT}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_EXTERNAL_PORT}:5432"
     volumes:
       - calibration_db_data:/var/lib/postgresql/data
     networks:
