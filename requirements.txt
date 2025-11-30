@@ -6,3 +6,4 @@ seaborn
 psycopg2-binary
 sqlalchemy
 requests
+scikit-learn
