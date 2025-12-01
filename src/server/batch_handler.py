@@ -2,9 +2,13 @@ import logging
 from typing import Dict, List, Union
 import numpy as np
 from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
+from src.lib.calibration_stages import CalibrationStage
 from src.lib.data_types import DataType
 from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
 from src.lib.report_builder import ReportBuilder
+from src.server.utrace_calculator import UtraceCalculator
+from uqm.uncertaintyQuantifier import UncertaintyQuantifier
+from uqm.utils.utils import flatten_batch, get_coverage
 
 
 class BatchHandler:
@@ -30,7 +34,10 @@ class BatchHandler:
         self._scores = self._db.get_scores_from_session(user_id)
         self._session_id = session_id
         self._inputs_format = inputs_format
-        self._build_state()
+        self.counter = 0
+        self.uq = UtraceCalculator()
+
+
         """
         The line above should change to store only scores instead of probabilities per class and labels.
         self._batches: Dict[int, np.ndarray] = {}
@@ -214,29 +221,53 @@ class BatchHandler:
             entry[kind] is not None
             for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
         ):
-            mlflow_msg = mlflow_probs_pb2.MlflowProbs()
-            for p in entry[DataType.PROBS]:
-                prob = mlflow_probs_pb2.PredictionList()
-                prob.values.extend(p)
-                mlflow_msg.pred.append(prob)
+            self.calibrate(entry)
+            self.send_mlflow_msg(batch_index, entry)
+            self.counter += 1
 
-            mlflow_msg.batch_index = batch_index
-            mlflow_msg.client_id = self.user_id
-            mlflow_msg.session_id = self._session_id
-            mlflow_msg.data = entry[DataType.INPUTS].tobytes()
-            mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
-            mlflow_body = mlflow_msg.SerializeToString()
+    def calibrate(self, entry):
+        CALIBRATION_LIMIT = 3
+        UNCERTAINTY_LIMIT = 6
 
-            self._middleware.basic_send(
+        if self.counter == CALIBRATION_LIMIT:
+            self.uq.update_stage(CalibrationStage.UNCERTAINTY_ESTIMATION)
+        elif self.counter == UNCERTAINTY_LIMIT:
+            self.uq.update_stage(CalibrationStage.PREDICTION_SET_CONSTRUCTION)
+
+        if self.counter < CALIBRATION_LIMIT:
+            self.uq.calibrate(entry[DataType.PROBS], entry[DataType.LABELS])
+            
+        elif self.counter < UNCERTAINTY_LIMIT:
+            self.uq.calculate_uncertainty(entry[DataType.PROBS], entry[DataType.LABELS])
+            
+        else:
+            self.uq.build_prediction_sets(entry[DataType.PROBS], force_non_empty_sets=False)
+
+
+    def send_mlflow_msg(self, batch_index, entry):
+        mlflow_msg = mlflow_probs_pb2.MlflowProbs()
+        for p in entry[DataType.PROBS]:
+            prob = mlflow_probs_pb2.PredictionList()
+            prob.values.extend(p)
+            mlflow_msg.pred.append(prob)
+
+        mlflow_msg.batch_index = batch_index
+        mlflow_msg.client_id = self.client_id
+        mlflow_msg.session_id = self._session_id
+        mlflow_msg.data = entry[DataType.INPUTS].tobytes()
+        mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
+        mlflow_body = mlflow_msg.SerializeToString()
+
+        self._middleware.basic_send(
                 channel=self._channel,  
                 exchange_name=MLFLOW_EXCHANGE,
                 routing_key=MLFLOW_ROUTING_KEY,
                 body=mlflow_body,
             )
-            logging.info(
-                f"action: send_mlflow_message | "
-                f"user_id: {self.user_id} | "
-                f"session_id: {self._session_id} | "
-                f"batch_index: {batch_index} | "
-                f"result: success"
-            )
+        logging.info(
+            f"action: send_mlflow_message | "
+            f"user_id: {self.user_id} | "
+            f"session_id: {self._session_id} | "
+            f"batch_index: {batch_index} | "
+            f"result: success"
+        )
