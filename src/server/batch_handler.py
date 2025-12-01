@@ -224,6 +224,7 @@ class BatchHandler:
             self.calibrate(entry)
             self.send_mlflow_msg(batch_index, entry)
             self.counter += 1
+            del self._batches[batch_index]
 
     def calibrate(self, entry):
         CALIBRATION_LIMIT = 3
@@ -252,7 +253,7 @@ class BatchHandler:
             mlflow_msg.pred.append(prob)
 
         mlflow_msg.batch_index = batch_index
-        mlflow_msg.client_id = self.client_id
+        mlflow_msg.client_id = self.user_id
         mlflow_msg.session_id = self._session_id
         mlflow_msg.data = entry[DataType.INPUTS].tobytes()
         mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
