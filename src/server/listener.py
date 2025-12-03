@@ -32,11 +32,11 @@ class Listener:
             channel=channel,
             queue_name=CONNECTION_QUEUE_NAME,
             callback_function=self._handle_new_client,
+            consumer_tag=config.pod_name
         )
 
         self.logger = logger or logging.getLogger("listener")
         self.channel = channel
-        self.consumer_tag = None
         self.database = database
 
         self.config = config

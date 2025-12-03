@@ -98,12 +98,13 @@ class Middleware:
             )
             raise e
 
-    def basic_consume(self, channel, queue_name: str, callback_function) -> str:
+    def basic_consume(self, channel, queue_name: str, callback_function, consumer_tag=None) -> str:
         self.logger.info(f"Setting up consumer for queue: {queue_name}")
         self.consumer_tag = channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
+            consumer_tag=consumer_tag
         )
     
     def basic_send(
