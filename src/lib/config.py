@@ -16,7 +16,6 @@ class ServerConfig:
         self.service_name = os.getenv("POD_NAME", "calibration-service")
         self.container_name = os.getenv("CONTAINER_NAME", "")
         self.replica_id = int(os.getenv("REPLICA_ID", "1"))
-        self.initial_timeout = int(os.getenv("INITIAL_TIMEOUT", "30")) 
         self.client_timeout_seconds = int(os.getenv("CLIENT_TIMEOUT_SECONDS", "60")) 
 
 
