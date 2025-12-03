@@ -10,6 +10,7 @@ class Consumer:
 
     def __init__(
         self,
+        consumer_tag,
         middleware,  # object with host, port, credentials, etc.
         user_id,
         inputs_callback=None,
@@ -25,6 +26,7 @@ class Consumer:
         self.inputs_callback = inputs_callback  # Callback for inputs queue
         self.predictions_callback = predictions_callback  # Callback for replies queue
         self._shutdown_initiated = False
+        self.consumer_tag = consumer_tag
 
     def start(self):
         """Declare/bind queues, start consuming, and ACK the original message."""
@@ -63,9 +65,9 @@ class Consumer:
         )
 
         self.middleware.basic_consume(
-            self.channel, self.inputs_queue_name, self._inputs_callback
+            self.channel, self.inputs_queue_name, self._inputs_callback, consumer_tag=self.consumer_tag
         )
 
         self.middleware.basic_consume(
-            self.channel, self.outputs_queue_name, self._predictions_callback
+            self.channel, self.outputs_queue_name, self._predictions_callback, consumer_tag=self.consumer_tag
         )

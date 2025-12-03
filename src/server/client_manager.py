@@ -50,6 +50,7 @@ class ClientManager(Process):
         # Timeout management
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connections-service:8000")
         self.client_timeout_seconds = config.client_timeout_seconds
+        self.consumer_tag = config.pod_name
         self.last_message_time = time()
         self.last_message_time_lock = threading.Lock()
         self.timeout_checker_handler = threading.Thread(target=self._timeout_checker)
@@ -121,6 +122,7 @@ class ClientManager(Process):
             )
 
             self.consumer = Consumer(
+                consumer_tag=self.consumer_tag,
                 middleware=self.middleware,
                 user_id=self.user_id,
                 predictions_callback=self._handle_predictions_message,
