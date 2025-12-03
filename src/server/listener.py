@@ -85,12 +85,7 @@ class Listener:
                 else:
                     self.logger.debug(f"ClientManager {user_id} already stopped")
 
-    def _get_active_clients_count(self) -> int:
-        """Obtener el número actual de clientes activos (thread-safe)."""
-        with self._active_clients_lock:
-            return len(self._active_clients)
-
-
+    
     def start(self):
         """Main listener loop with graceful shutdown support"""
         logging.info("Listener starting consumption loop...")
