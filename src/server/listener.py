@@ -125,6 +125,8 @@ class Listener:
             return
         
         client_manager = ClientManager(
+            ch=ch,
+            delivery_tag=method.delivery_tag,
             user_id=user_id,
             session_id=session_id,
             middleware=self.cm_middleware_factory(self.middleware_config),
