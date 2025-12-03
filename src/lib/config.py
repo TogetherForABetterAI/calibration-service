@@ -13,7 +13,7 @@ OUTPUTS_QUEUE_NAME = "outputs_cal_queue"
 
 class ServerConfig:
     def __init__(self):
-        self.pod_name = os.getenv("POD_NAME", "calibration-service")
+        self.pod_name = os.getenv("POD_NAME", "calibration-service") # or container name, but for k8s pods are better
         self.upper_bound_clients = int(os.getenv("UPPER_BOUND_CLIENTS", "100"))
         self.replica_id = int(os.getenv("REPLICA_ID", "1"))
         self.client_timeout_seconds = int(os.getenv("CLIENT_TIMEOUT_SECONDS", "60")) 
