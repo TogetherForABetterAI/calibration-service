@@ -78,7 +78,7 @@ class Listener:
                 try:
                     if not self.shutdown_initiated: 
                         self.middleware.start_consuming(self.channel)
-                except pika.exceptions.AMQPConnectionError as e:
+                except (pika.exceptions.AMQPConnectionError, pika.exceptions.ChannelClosedByBroker) as e:                   
                     self.logger.error(f"AMQP Connection error in Listener: {e}")
                     if not self.shutdown_initiated:
                         self.reconnect_to_middleware()
