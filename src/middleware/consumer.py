@@ -54,7 +54,7 @@ class Consumer:
 
     def handle_sigterm(self):
         self._shutdown_initiated = True
-        self.middleware.stop_consuming()
+        self.middleware.stop_consuming(self.channel)
 
     def finish(self):
         """Gracefully shutdown the consumer."""
