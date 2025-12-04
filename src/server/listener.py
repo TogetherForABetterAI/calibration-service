@@ -88,6 +88,8 @@ class Listener:
         except Exception as e:
             self.logger.error(f"Error starting listener: {e}")
         finally:
+            self.clients_to_remove_queue.put(None)  # Signal monitor to stop
+            self.remove_client_monitor.join()
             self.finish()
             self.logger.info("Listener stopped consumption...")
 
