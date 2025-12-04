@@ -1,16 +1,12 @@
 import logging
-import os
-import signal
 import threading
-import time
-from typing import Dict, Optional
+from typing import Dict
 from multiprocessing import Queue
-from lib.config import CONNECTION_QUEUE_NAME, COORDINATOR_EXCHANGE
+from lib.config import CONNECTION_QUEUE_NAME
 from server.client_manager import ClientManager
 import json
-
+import pika.exceptions
 from src.lib.inputs_format_parser import parse_inputs_format
-from src.middleware.middleware import Middleware
 
 
 class Listener:
@@ -71,37 +67,42 @@ class Listener:
                 self.logger.error(f"Error in _monitor_removals: {e}")
                 continue
 
-    def _shutdown_all_clients(self):
-        """Finaliza todos los procesos ClientManager activos."""
-        self.logger.info("Shutting down all client managers...")
-        with self._active_clients_lock:
-            for user_id, handler in list(self._active_clients.items()):
-                if handler.is_alive():
-                    try:
-                        handler.terminate()
-                        handler.join(timeout=5)
-                    except Exception as e:
-                        self.logger.error(f"Error shutting down {user_id}: {e}")
-                else:
-                    self.logger.debug(f"ClientManager {user_id} already stopped")
-
     
     def start(self):
         """Main listener loop with graceful shutdown support"""
-        logging.info("Listener starting consumption loop...")
-        self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
-        self.remove_client_monitor.start()
-
-        if not self.shutdown_initiated: 
-            self.middleware.start_consuming(self.channel)
- 
-        if self.shutdown_initiated:
+        self.logger.info("Listener starting consumption loop...")
+        try:
+            self.remove_client_monitor = threading.Thread(target=self._monitor_removals)
+            self.remove_client_monitor.start()
+            while not self.shutdown_initiated:
+                try:
+                    if not self.shutdown_initiated: 
+                        self.middleware.start_consuming(self.channel)
+                except pika.exceptions.AMQPConnectionError as e:
+                    self.logger.error(f"AMQP Connection error in Listener: {e}")
+                    if not self.shutdown_initiated:
+                        self.reconnect_to_middleware()
+                except Exception as e:
+                    self.logger.error(f"Error in Listener consumption loop: {e}")
+                    break
+        except Exception as e:
+            self.logger.error(f"Error starting listener: {e}")
+        finally:
             self.finish()
-            return
-            
-        logging.info("Listener stopping consumption...")
-        self.finish()
+            self.logger.info("Listener stopped consumption...")
+
+
+    def reconnect_to_middleware(self):
+        self.middleware.connect()
+        self.channel = self.middleware.create_channel(prefetch_count=self.config.upper_bound_clients)
+        self.middleware.basic_consume(
+            channel=self.channel,
+            queue_name=CONNECTION_QUEUE_NAME,
+            callback_function=self._handle_new_client,
+            consumer_tag=self.config.pod_name
+            )
     
+    # Callback for new client notifications
     def _handle_new_client(self, ch, method, properties, body):
         """Launch a ClientManager process for each new client notification (all logic inside ClientManager)."""
         self.logger.info("Received new client connection notification")
@@ -111,18 +112,18 @@ class Listener:
         session_id = notification.get("session_id")
         inputs_format = parse_inputs_format(notification.get("inputs_format"))
 
-        if not user_id:
+        if not user_id or not session_id:
             self.logger.info(
-                f"Client notification missing user_id: {notification}"
+                f"Client notification missing fields: {notification}"
             )
-            return  
+            raise ValueError("Client notification missing fields") # dont requeue
         
 
         if not self.middleware.is_running():
             self.logger.info(
                 f"Shutdown initiated, ignoring new client {user_id}"
             )
-            return
+            return # the message will be requeued since we didnt ack it
         
         client_manager = ClientManager(
             ch=ch,
@@ -136,10 +137,10 @@ class Listener:
             database=self.database,
             inputs_format=inputs_format,
         )
-        logging.info(f"Created ClientManager for client {user_id}")
+        self.logger.info(f"Created ClientManager for client {user_id}")
         self._add_client(user_id, client_manager)
 
-        logging.info(f"Starting ClientManager for client {user_id}")
+        self.logger.info(f"Starting ClientManager for client {user_id}")
         client_manager.start()
 
     def _remove_client(self, user_id: str):
@@ -156,19 +157,21 @@ class Listener:
                 self._active_clients[user_id] = handler
                 self.logger.info(f"Added ClientManager for client {user_id}")
 
-    def terminate_all_clients(self):
+
+    def _terminate_all_clients(self):
         """Join all active ClientManager processes."""
         self.logger.info("Joining all client managers...")
-        active_clients = list(self._active_clients.items())
+        with self._active_clients_lock:
+            active_clients = list(self._active_clients.items())
         for (
             user_id,
             handler,
         ) in active_clients:
             if handler.is_alive():
                 try:
-                    os.kill(handler.pid, signal.SIGTERM)
-                    logging.info(f"Terminated ClientManager for client {user_id}...")
+                    handler.terminate()
                     handler.join()
+                    self.logger.info(f"Terminated ClientManager for client {user_id}...")
                 except Exception as e:
                     self.logger.error(
                         f"Error shutting down ClientManager {user_id}: {e}"
@@ -182,15 +185,12 @@ class Listener:
 
     def handle_sigterm(self):
         """Signal to stop consuming messages and initiate shutdown."""
-        logging.info("Listener received SIGTERM, initiating shutdown...")
+        self.logger.info("Listener received SIGTERM, initiating shutdown...")
         self.shutdown_initiated = True
-        if self.middleware.is_running():
-            self.middleware.stop_consuming()
-
-        if not self.middleware.on_callback():
-            self.middleware.cancel_channel_consuming(self.channel)
+        self.middleware.stop_consuming(self.channel) # stop consuming new messages
+        self.middleware.handle_sigterm() # in case its trying to reconnect
         
-        self.terminate_all_clients()
+        self._terminate_all_clients()
         self.clients_to_remove_queue.put(None)  
         self.remove_client_monitor.join()
         
