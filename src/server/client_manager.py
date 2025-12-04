@@ -145,7 +145,7 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error setting up client {self.user_id}: {e}")
         finally:
-            if self.ch.is_open():
+            if self.ch.is_open:
                 self.ch.basic_ack(self.delivery_tag) # acknowledge the original notification message
                 self.logger.info(f"Acknowledged notification message for client {self.user_id}")
             self.logger.info(f"ClientManager process for client {self.user_id} terminating")
