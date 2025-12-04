@@ -1,5 +1,7 @@
 import logging
 from src.lib.config import INPUTS_QUEUE_NAME, OUTPUTS_QUEUE_NAME
+import pika.exceptions
+
 
 
 class Consumer:
@@ -32,6 +34,9 @@ class Consumer:
             self._setup_queues()
             if not self._shutdown_initiated:
                 self.middleware.start_consuming(self.channel)
+        except pika.exceptions.AMQPConnectionError as e:
+            self.logger.error(f"AMQP Connection error in Consumer for client {self.user_id}: {e}")
+            raise e 
         except Exception as e:
             self.logger.error(f"Error in Consumer for client {self.user_id}: {e}")
         finally:

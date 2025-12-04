@@ -9,6 +9,7 @@ from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
 import requests
 from enum import Enum
+import pika.exceptions
 
 from src.lib.session_status import SessionStatus
 
@@ -137,11 +138,16 @@ class ClientManager(Process):
         
             if not self.shutdown_initiated and self.clients_to_remove_queue:
                 self.clients_to_remove_queue.put(self.user_id)
-                
+
+        except pika.exceptions.AMQPConnectionError as e:
+            self.logger.error(f"AMQP Connection error in ClientManager for client {self.user_id}: {e}")   
+            # the message will be requeued since the connection was lost before ack
         except Exception as e:
             self.logger.error(f"Error setting up client {self.user_id}: {e}")
         finally:
-            self.ch.basic_ack(self.delivery_tag) # Acknowledge the original notification message
+            if self.ch.is_open():
+                self.ch.basic_ack(self.delivery_tag) # acknowledge the original notification message
+                self.logger.info(f"Acknowledged notification message for client {self.user_id}")
             self.logger.info(f"ClientManager process for client {self.user_id} terminating")
 
     def _handle_predictions_message(self, ch, method, properties, body):
