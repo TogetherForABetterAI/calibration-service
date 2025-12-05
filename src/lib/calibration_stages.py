@@ -1,10 +1,14 @@
 
+from enum import IntEnum
 
-from enum import Enum
 
-
-class CalibrationStage(Enum):
+class CalibrationStage(IntEnum):
     INITIAL_CALIBRATION = 1
     UNCERTAINTY_ESTIMATION = 2
     PREDICTION_SET_CONSTRUCTION = 3
     FINISHED = 4
+
+    def __str__(self):
+        return self.name
+
+    

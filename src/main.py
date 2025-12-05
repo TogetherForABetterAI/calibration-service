@@ -20,7 +20,7 @@ def main():
         return Middleware(config=config)
     
     def report_builder_factory(user_id: str):
-        from src.server.batch_handler import ReportBuilder
+        from src.server.report_builder import ReportBuilder
         return ReportBuilder(user_id=user_id, email_sender=config.email_sender, email_password=config.email_password)
     
     db = Database(get_engine(config.database_url))

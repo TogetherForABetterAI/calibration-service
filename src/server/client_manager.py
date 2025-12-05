@@ -24,6 +24,7 @@ class ClientManager(Process):
         report_builder,
         database=None,
         inputs_format=None,
+        recipient_email=None,
     ):
         """
         Initialize ClientManager as a Process.
@@ -46,6 +47,7 @@ class ClientManager(Process):
         self.database = database
         self.session_id = session_id
         self.inputs_format = inputs_format
+        self.recipient_email = recipient_email
 
         # Timeout management
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connections-service:8000")
@@ -99,7 +101,6 @@ class ClientManager(Process):
             
             self.timeout_checker_handler.join(timeout=2)
 
-
     def run(self):
         """
         Main process loop: parse message, setup queues, create consumer, and start processing.
@@ -114,7 +115,6 @@ class ClientManager(Process):
                 user_id=self.user_id,
                 session_id=self.session_id,
                 on_eof=self._handle_EOF_message,    
-                report_builder=self.report_builder,
                 middleware=self.middleware,
                 database=self.database,
                 inputs_format=self.inputs_format,
@@ -169,8 +169,20 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error updating session {self.session_id} status: {e}")
 
+    def send_report(self):
+        """
+        Build and send report when both labeled and replies data are complete.
+        """
+        
+        self.report_builder.generate_report(self.batch_handler.get_calibration_results())  
+
+        logging.info(f"Sending report to {self.recipient_email} for client {self.user_id}")
+        self.report_builder.send_report(self.recipient_email)
+
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
+
+        self.send_report()
         self.logger.info(f"Received EOF message for client {self.user_id}")
         self.consumer.handle_sigterm()
         self.batch_handler.handle_sigterm()

@@ -7,3 +7,12 @@ psycopg2-binary
 sqlalchemy
 requests
 scikit-learn
+torchvision
+monai
+scikit-image
+matplotlib
+nibabel
+pillow
+pandas
+tqdm
+flax

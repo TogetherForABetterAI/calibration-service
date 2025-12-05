@@ -5,10 +5,7 @@ from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
 from src.lib.calibration_stages import CalibrationStage
 from src.lib.data_types import DataType
 from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
-from src.lib.report_builder import ReportBuilder
 from src.server.utrace_calculator import UtraceCalculator
-from uqm.uncertaintyQuantifier import UncertaintyQuantifier
-from uqm.utils.utils import flatten_batch, get_coverage
 
 
 class BatchHandler:
@@ -17,13 +14,11 @@ class BatchHandler:
         user_id: str,
         session_id: str,
         on_eof,
-        report_builder,
         middleware,
         database=None,
         inputs_format=None,
     ):
         self.user_id = user_id
-        self._report_builder = report_builder
         self._inputs_eof = False
         self._outputs_eof = False
         self._batches: Dict[int, Dict] = {}
@@ -31,13 +26,10 @@ class BatchHandler:
         self._db = database
         self._middleware = middleware
         self._channel = self._middleware.create_channel()
-        self._scores = self._db.get_scores_from_session(user_id)
         self._session_id = session_id
         self._inputs_format = inputs_format
-        self.counter = 0
-        self.uq = UtraceCalculator()
-
-
+        self._build_state()
+        self.uq = UtraceCalculator(database=self._db, user_id=self.user_id, session_id=self._session_id)
         """
         The line above should change to store only scores instead of probabilities per class and labels.
         self._batches: Dict[int, np.ndarray] = {}
@@ -69,26 +61,22 @@ class BatchHandler:
         """Stop processing and clean up resources."""
         pass
 
-    def send_report(self):
-        """
-        Build and send report when both labeled and replies data are complete.
-        y_pred and y_test are the outputs of the calibration process. For now, we build them from stored data.
-        In the future, we should change this to use the scores only.
-
-        y_pred: List of predicted probabilities
-        y_test: List of true labels
-        """
-        y_pred = []
-        y_test = []
+    def get_calibration_results(self):
+        metrics = self.uq.get_calibration_results()
+        y_pred = np.array([])
+        y_true = np.array([])
         for batch in self._batches.values():
             if batch[DataType.PROBS] is not None and batch[DataType.LABELS] is not None:
-                y_pred.extend(batch[DataType.PROBS])
-                y_test.extend(batch[DataType.LABELS])
+                probs = batch[DataType.PROBS]
+                labels = batch[DataType.LABELS]
+                preds = np.argmax(probs, axis=1)
+                y_pred = np.concatenate((y_pred, preds))
+                y_true =  np.concatenate((y_true, labels.ravel()))
 
-        self._report_builder.build_report(y_test, y_pred)
-        logging.info(f"action: build_report | result: success | user_id: {self.user_id}")
-        self._report_builder.send_report("guldenjf@gmail.com")
-        logging.info(f"action: send_report | result: success | user_id: {self.user_id}")
+        metrics["raw_data"]["y_pred"] = np.array(y_pred)
+        metrics["raw_data"]["y_true"] = np.array(y_true)
+        return metrics
+
 
 
     def _handle_predictions_message(self, ch, body):
@@ -118,8 +106,7 @@ class BatchHandler:
                 self._outputs_eof = True
 
             if self._inputs_eof and self._outputs_eof:
-                self.send_report()
-                self._on_eof() 
+                self._handle_eof()
 
         except Exception as e:
             logging.error(
@@ -150,8 +137,7 @@ class BatchHandler:
                 self._inputs_eof = True
 
             if self._inputs_eof and self._outputs_eof:
-                self.send_report()
-                self._on_eof() 
+                self._handle_eof()
                 
         except Exception as e:
             logging.error(
@@ -159,6 +145,10 @@ class BatchHandler:
             )
             raise e
         
+    def _handle_eof(self):
+        self.uq.update_stage(CalibrationStage.FINISHED)
+        self._on_eof()  
+
     def _process_input_data(self, data):
         
         data_array = np.frombuffer(data, dtype=self._inputs_format.dtype)
@@ -221,29 +211,9 @@ class BatchHandler:
             entry[kind] is not None
             for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
         ):
-            self.calibrate(entry)
+            self.uq.process_entry(entry)
             self.send_mlflow_msg(batch_index, entry)
-            self.counter += 1
-            del self._batches[batch_index]
-
-    def calibrate(self, entry):
-        CALIBRATION_LIMIT = 3
-        UNCERTAINTY_LIMIT = 6
-
-        if self.counter == CALIBRATION_LIMIT:
-            self.uq.update_stage(CalibrationStage.UNCERTAINTY_ESTIMATION)
-        elif self.counter == UNCERTAINTY_LIMIT:
-            self.uq.update_stage(CalibrationStage.PREDICTION_SET_CONSTRUCTION)
-
-        if self.counter < CALIBRATION_LIMIT:
-            self.uq.calibrate(entry[DataType.PROBS], entry[DataType.LABELS])
-            
-        elif self.counter < UNCERTAINTY_LIMIT:
-            self.uq.calculate_uncertainty(entry[DataType.PROBS], entry[DataType.LABELS])
-            
-        else:
-            self.uq.build_prediction_sets(entry[DataType.PROBS], force_non_empty_sets=False)
-
+            # del self._batches[batch_index]
 
     def send_mlflow_msg(self, batch_index, entry):
         mlflow_msg = mlflow_probs_pb2.MlflowProbs()

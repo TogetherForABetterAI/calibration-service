@@ -10,6 +10,9 @@ MLFLOW_EXCHANGE = "mlflow_exchange"
 MLFLOW_ROUTING_KEY = "mlflow.key"
 INPUTS_QUEUE_NAME = "inputs_cal_queue"
 OUTPUTS_QUEUE_NAME = "outputs_cal_queue"
+INTI_LOGO_PATH = "reports/img/inti_logo.png"
+SIGNATURE_PATH = "reports/img/signature.jpg"
+REPORTS_DIR = "reports/"
 
 class ServerConfig:
     def __init__(self):

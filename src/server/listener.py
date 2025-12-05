@@ -115,6 +115,7 @@ class Listener:
         user_id = notification.get("user_id")
         session_id = notification.get("session_id")
         inputs_format = parse_inputs_format(notification.get("inputs_format"))
+        recipient_email = notification.get("email")
 
         if not user_id:
             self.logger.info(
@@ -138,6 +139,7 @@ class Listener:
             config=self.config,
             database=self.database,
             inputs_format=inputs_format,
+            recipient_email=recipient_email,
         )
         logging.info(f"Created ClientManager for client {user_id}")
         self._add_client(user_id, client_manager)

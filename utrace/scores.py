@@ -5,7 +5,7 @@ def lac_cal(
     y: np.ndarray,
     smx: np.ndarray,
     ) -> np.ndarray:
-    return 1 - smx[np.arange(len(y)), y].cpu().numpy().astype(np.float64) # changed .astype to .cpu().numpy().astype
+    return 1 - smx[np.arange(len(y)), y]
 
 def lac(smx:np.ndarray) -> np.ndarray:
     """LAC score.

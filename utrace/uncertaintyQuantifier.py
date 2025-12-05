@@ -6,8 +6,7 @@ from typing import Literal, Union
 
 import numpy as np
 
-from uqm.scores import aps, aps_cal, lac, lac_cal
-from uqm.utils import flatten_batch
+from utrace.scores import aps, aps_cal, lac, lac_cal
 
 logger = logging.getLogger(__name__)
 
@@ -85,18 +84,15 @@ class UncertaintyQuantifier:
         batched : bool, optional
             For batched calibration; concatenates new scores with previous ones. By default False
         """
-        logger.debug('Calibrating with input shape: %s', y_probs.shape)
-        y = flatten_batch(y_true).ravel().numpy().astype(int)  # added .numpy() #TODO: generalize API
         
-        logger.debug('Fitting with %d samples', len(y))
-        y_pred_proba = flatten_batch(y_probs)
+        logger.debug('Fitting with %d samples', len(y_true))
 
         if batched:
             # If batched calibration, we need to concatenate the conformity scores for each batch
             self.conformity_scores_ = np.concatenate([self.conformity_scores_,
-                                                      self.cal_score_(y, y_pred_proba)])
+                                                      self.cal_score_(y_true, y_probs)])
         else:
-            self.conformity_scores_ = self.cal_score_(y, y_pred_proba)
+            self.conformity_scores_ = self.cal_score_(y_true, y_probs)
         
         logger.debug("Conformity scores shape: %s", self.conformity_scores_.shape)
         
@@ -107,9 +103,9 @@ class UncertaintyQuantifier:
                 if batched:
                     self._class_scores[c_idx] = np.sort(
                                                 np.concatenate([self._class_scores[c_idx],
-                                                                self.cal_score_(y[y==C], y_pred_proba[y==C])]))
+                                                                self.cal_score_(y_true[y_true==C], y_probs[y_true==C])]))
                 else:
-                    self._class_scores[c_idx] = np.sort(self.cal_score_(y[y==C], y_pred_proba[y==C]))
+                    self._class_scores[c_idx] = np.sort(self.cal_score_(y_true[y_true==C], y_probs[y_true==C]))
                 if self._class_scores[c_idx].size == 0:
                     logger.warning("No scores for class %d after calibration.", C)
             self.conformity_scores_ = np.sort(np.concatenate(self._class_scores))
@@ -133,10 +129,9 @@ class UncertaintyQuantifier:
         y_sets : np.ndarray
             The sets of labels as a boolean array.
         """
-        probs_np = flatten_batch(y_probs).cpu().numpy()
-        y_pred = np.argmax(probs_np, axis=1)
+        y_pred = np.argmax(y_probs, axis=1)
 
-        scores = self.score_(probs_np)
+        scores = self.score_(y_probs)
         y_sets = scores <= self.__q_hat
         
         if force_non_empty_sets:
@@ -162,21 +157,17 @@ class UncertaintyQuantifier:
         U, alpha : float
             The uncertainty of the model predictions and the alpha of the CP found.
         """
-        
-        y = y_true.numpy().flatten().astype(int)
-        logger.debug(" Computing model uncertainty with: 'y_pred' shape: %s, 'y_true' shape: %s\n, class(es): %s",
-                     y_pred.shape, y.shape, self.classes)
 
         if self.classes is not None:
             K = len(y_pred)
             
         N = len(self.conformity_scores_)
-        Ns = len(y)
+        Ns = len(y_true)
 
         if self.classes is not None:
-            valid_indexes = np.isin(y, np.array(self.classes))  #type: ignore
+            valid_indexes = np.isin(y_true, np.array(self.classes))  #type: ignore
         else:
-            valid_indexes = np.ones(len(y), dtype=bool)
+            valid_indexes = np.ones(len(y_true), dtype=bool)
 
         best_alpha = np.float64('nan')
         
@@ -187,9 +178,9 @@ class UncertaintyQuantifier:
             q_hat = score
             alpha = 1 - (j + 1) / (N + 1)
 
-            prediction_sets = (y_pred.cpu().numpy() >= (1 - q_hat))
+            prediction_sets = (y_pred >= (1 - q_hat))
 
-            is_covered = prediction_sets[np.arange(Ns), y]
+            is_covered = prediction_sets[np.arange(Ns), y_true]
         
             success_indices = np.where(is_covered)[0]
             failure_indices = np.where(~is_covered)[0]
@@ -223,110 +214,3 @@ class UncertaintyQuantifier:
 
         logger.debug("Best alpha: %f - Min upper uncertainty bound: %f\n", best_alpha, 1-max_lower_bound)
         return 1-max_lower_bound, best_alpha
-
-
-    def get_uncertainty(self, y_probs, y_true, max_iters = 30) -> tuple[np.float64, np.float64]:
-        """Calculates the uncertainty of the model predictions.
-        
-        This method uses a binary search-like approach to find the optimal alpha value
-        that yields the average target set size of the predicted sets.
-        
-        Parameters
-        ----------
-        y_probs : np.ndarray
-            Predicted probabilities for each class.
-        y_true : np.ndarray
-            Target labels for prediction.
-        max_iters : int, optional
-            Maximum number of iterations for the search, by default 20
-        Returns
-        -------
-        U, alpha : float
-            The uncertainty of the model predictions and the alpha of the CP found.
-        """
-        
-        y = y_true.numpy().flatten().astype(int)
-        logger.debug("'y_probs' shape: %s, 'y_true' shape: %s", y_probs.shape, y.shape)
-
-        if self.classes is not None:
-            valid_indexes = np.isin(y, np.array(self.classes))  #type: ignore
-        else:
-            valid_indexes = np.ones(len(y), dtype=bool)
-
-        y_f = y[valid_indexes]
-
-        if not valid_indexes.any():
-            logger.warning("No valid indexes found for class(es) %s", self.classes)
-            return np.float64('nan'), np.float64('nan')
-        logger.debug("Valid indexes shape: %s", valid_indexes.shape)
-
-        setsize = np.float64(0.0)
-        setsize_std = np.float64(0.0)
-        alpha = np.float64(1.0)
-        delta = np.float64(1.0)
-
-        it = 0
-        alphas: list[np.float64] = []
-        EC_yt = np.float64(0.0)
-        while (it < max_iters):
-            
-            delta = delta/2
-            if setsize > 1.0:
-                alpha += delta
-            else:
-                alpha -= delta
-
-            
-            if alpha < 0.0 or alpha > 1.0:
-                logger.error("Alpha out of bounds: %s - Iter: %d",alphas, it)
-                break
-
-            self.alpha = alpha
-            # Store the alpha value for debugging
-            alphas.append(alpha)
-
-            # Predict to evaluate the average set size
-            y_p, y_s = self._predict_sets(y_pred.cpu().numpy(), force_non_empty_sets=False)
-
-            # Filter out the ouputs that are not in the classes
-            y_p = y_p[valid_indexes]
-            y_s = y_s[valid_indexes]
-
-            # Calculate E[1/|C| | y_t in C(x_t)]
-            mask = y_s[np.arange(len(y_s)), y_f]
-            y_sf = y_s[mask]
-            y_nsf = y_s[np.logical_not(mask)]
-            setsizes = y_sf.sum(axis=1)
-            if setsizes.shape[0] == 0:
-                logger.warning("No sets found for class(es) %s at alpha %f", self.classes, alpha)
-                return np.float64(1.0), alpha
-            miss_setsizes = y_nsf.sum(axis=1)
-            logger.debug("y_sf shape: %s - setsizes shape:\n%s ", y_sf.shape, setsizes.shape)
-
-            try:
-                setsize = np.nanmean(y_s.sum(axis=1), dtype=np.float64)
-                EC_yt = np.nanmean(1/setsizes, dtype=np.float64)
-                setsize_std = setsizes.std()
-
-                #EC_nyt = np.nanmean(1/(len(self.classes) - miss_setsizes), dtype=np.float64)
-                #logger.debug("EC_yt: %f - EC_nyt: %f", EC_yt, EC_nyt)
-
-
-            except ValueError:
-                logger.error("Error calculating E[1/|C| | y_t in C(x_t)]:\n"
-                             "Input shape: %s - Output sets shape: %s - "
-                             "Valid indexes shape: %s.\n",
-                             y.shape, y_s.shape, valid_indexes.shape)
-                break
-
-            logger.debug("Iteration %d - alpha: %f - delta: %f - Set size: %f", it, alpha, delta, setsize)
-            it += 1
-
-        logger.debug("Found alpha %f for class(es) %s with average set-size %f and std %f.",
-                      self.alpha, self.classes, setsize, setsize_std)
-        logger.debug("Alphas analyzed: %s", alphas)
-
-        p_tc = EC_yt*(1-self.alpha) #+ EC_nyt*self.alpha (*)
-        U = 1 - p_tc
-        logger.debug("Model U: %f - EC_yt: %f.", U, EC_yt)
-        return U, self.alpha
