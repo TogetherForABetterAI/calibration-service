@@ -1,7 +1,7 @@
 from sqlalchemy.exc import NoResultFound, SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from uuid import UUID
 import logging
 from src.models.inputs import ModelInputs
@@ -46,8 +46,77 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error writing vec_scores for session_id {session_id}: {e}")
                 session.rollback()
-            finally:
-                session.close()
+
+    def get_latest_scores_record(self, user_id, session_id) -> Scores | None:
+        """
+        Retrieve the latest Scores record for a given user_id and session_id.
+        Returns the Scores record if found, otherwise None.
+        """
+        with Session(self.engine) as session:
+            try:
+                stmt = select(Scores).where(
+                    Scores.user_id == user_id,
+                    Scores.session_id == session_id
+                )
+                result = session.execute(stmt).scalar_one_or_none()
+
+                if result:
+                    logging.info(f"Scores record found for user_id: {user_id}, session_id: {session_id}")
+                    return result
+                else:
+                    logging.info(f"No Scores record found for user_id: {user_id}, session_id: {session_id}")
+                    return None
+            except SQLAlchemyError as e:
+                logging.error(f"Error retrieving Scores record for user_id {user_id}, session_id {session_id}: {e}")
+                return None
+
+    def update_session_state(self, user_id, session_id, updates):
+        with Session(self.engine) as session:
+            try: 
+                stmt = update(Scores).where(
+                    Scores.user_id == user_id, 
+                    Scores.session_id == session_id
+                )
+                
+                values = {}
+                
+                if 'push_alphas' in updates:
+                    values['alphas'] = func.array_append(Scores.alphas, updates['push_alphas'])
+                if 'push_uncertainties' in updates:
+                    values['uncertainties'] = func.array_append(Scores.uncertainties, updates['push_uncertainties'])
+                if 'push_coverages' in updates:
+                    values['coverages'] = func.array_append(Scores.coverages, updates['push_coverages'])
+                if 'push_setsizes' in updates:
+                    values['setsizes'] = func.array_append(Scores.setsizes, updates['push_setsizes'])
+                if 'push_confidences' in updates:
+                    values['confidences'] = func.coalesce(Scores.confidences, b'') + updates['push_confidences']
+
+                # Actualizaciones escalares
+                if 'accuracy' in updates:
+                    values['accuracy'] = updates['accuracy']
+                if 'correct_preds' in updates:
+                    values['correct_preds'] = updates['correct_preds']
+                if 'total_samples' in updates:
+                    values['total_samples'] = updates['total_samples']
+
+                # Variables del uq
+                if 'alpha' in updates:
+                    values['alpha'] = updates['alpha']
+                if 'q_hat' in updates:
+                    values['q_hat'] = updates['q_hat']
+                if 'scores' in updates:
+                    values['scores'] = updates['scores']
+    
+                                
+                values['batchs_counter'] = updates['batchs_counter']
+                values['stage'] = updates['stage']
+                
+                stmt = stmt.values(values)
+                session.execute(stmt)
+                session.commit()
+            except SQLAlchemyError as e:
+                logging.error(f"Error updating session state for user_id {user_id}, session_id {session_id}: {e}")
+                session.rollback()
 
     def write_inputs(self, session_id: UUID, inputs: bytes):
         """
@@ -71,8 +140,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error writing inputs for session_id {session_id}: {e}")
                 session.rollback()
-            finally:
-                session.close()
 
     def write_outputs(self, session_id: UUID, outputs: bytes):
         """
@@ -96,8 +163,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error writing outputs for session_id {session_id}: {e}")
                 session.rollback()
-            finally:
-                session.close()
     
     def get_scores_from_session(self, session_id: UUID) -> bytes | None:
         """
@@ -119,8 +184,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error reading vec_scores for session_id {session_id}: {e}")
                 return None
-            finally:
-                session.close()
                 
     def get_inputs_from_session(self, session_id: UUID) -> bytes | None:
         """
@@ -141,8 +204,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error reading inputs for session_id {session_id}: {e}")
                 return None
-            finally:
-                session.close()
 
     def get_outputs_from_session(self, session_id: UUID) -> bytes | None:
         """
@@ -163,8 +224,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error reading outputs for session_id {session_id}: {e}")
                 return None
-            finally:
-                session.close()
 
 
     def get_last_processed_batch_index(self) -> int | None:
@@ -186,8 +245,6 @@ class Database:
             except SQLAlchemyError as e:
                 logging.error(f"Error retrieving last processed batch ID: {e}")
                 return None
-            finally:
-                session.close()
                 
             
         

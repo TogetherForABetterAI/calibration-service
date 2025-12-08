@@ -13,6 +13,8 @@ OUTPUTS_QUEUE_NAME = "outputs_cal_queue"
 INTI_LOGO_PATH = "reports/img/inti_logo.png"
 SIGNATURE_PATH = "reports/img/signature.jpg"
 REPORTS_DIR = "reports/"
+CALIBRATION_LIMIT = 10
+UNCERTAINTY_LIMIT = 20
 
 class ServerConfig:
     def __init__(self):

@@ -38,14 +38,11 @@ class UncertaintyQuantifier:
         self.reset()
 
 
-    def reset(self):
+    def reset(self, conformity_scores_:np.ndarray=np.empty(0)):
         """Resets the scoores and alpha."""
-        self.conformity_scores_ = np.empty(0)
-        self.__alpha:np.float64 = np.float64('nan')
+        self.conformity_scores_ = conformity_scores_
         self.__q_hat:np.float64 = np.float64('nan')
-
-        self._class_alphas:np.ndarray = np.zeros_like(self.classes, dtype=np.float64) if self.classes is not None else np.empty(0)
-        self._class_q_hats:np.ndarray = np.zeros_like(self.classes, dtype=np.float64) if self.classes is not None else np.empty(0)
+        self.__alpha:np.float64 = np.float64('nan')
         self._class_scores:list[np.ndarray] = [np.empty(0) for _ in self.classes] if self.classes is not None else []
 
         logger.debug("UQ reset.")
@@ -109,7 +106,7 @@ class UncertaintyQuantifier:
                 if self._class_scores[c_idx].size == 0:
                     logger.warning("No scores for class %d after calibration.", C)
             self.conformity_scores_ = np.sort(np.concatenate(self._class_scores))
-            logger.debug("Total conformity scores shape after class calibration: %s", self.conformity_scores_.shape)
+            logger.debug("Total conformity scores shape after class calibration: %s", self.conformity_scores_.shape) 
 
 
     def build_prediction_sets(self, y_probs: np.ndarray, force_non_empty_sets: bool = False) -> tuple[np.ndarray, np.ndarray]:
@@ -124,20 +121,19 @@ class UncertaintyQuantifier:
 
         Returns
         -------
-        y_pred : np.ndarray
-            The predicted class labels.
         y_sets : np.ndarray
             The sets of labels as a boolean array.
         """
         y_pred = np.argmax(y_probs, axis=1)
 
         scores = self.score_(y_probs)
+        logging.info("Building prediction sets with q_hat: %f", self.__q_hat)
         y_sets = scores <= self.__q_hat
         
         if force_non_empty_sets:
             y_sets[np.arange(len(y_pred)), y_pred] = True
 
-        return y_pred, y_sets
+        return y_sets
 
 
     def get_uncertainty_opt(self, y_pred, y_true) -> tuple[np.float64, np.float64]:

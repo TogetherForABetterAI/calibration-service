@@ -13,7 +13,7 @@ def mock_middleware():
 def client_manager(mock_middleware):
     def report_builder_factory(user_id: str):
         return Mock()
-    return ClientManager(user_id="client123", session_id="session123", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(user_id="client123"), database=Mock(), inputs_format=None)
+    return ClientManager(user_id="client123", session_id="session123", recipient_email="", middleware=mock_middleware, clients_to_remove_queue=None, config=Mock(client_timeout_seconds=30), report_builder=report_builder_factory(user_id="client123"), database=Mock(), inputs_format=None)
 
 
 def test_initialization(client_manager):

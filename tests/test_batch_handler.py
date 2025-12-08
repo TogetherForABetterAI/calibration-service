@@ -3,6 +3,7 @@ import numpy as np
 from unittest.mock import Mock, patch
 from src.lib.data_types import DataType
 from src.server.batch_handler import BatchHandler
+from src.lib.calibration_stages import CalibrationStage
 
 def report_builder_factory(user_id: str):
     return Mock()   
@@ -11,11 +12,27 @@ def db_mock():
     db = Mock()
     db.get_inputs_from_session.return_value = []
     db.get_outputs_from_session.return_value = []
+    
+    record_mock = Mock()
+    record_mock.setsizes = []
+    
+    record_mock.batchs_counter = 0
+    record_mock.stage = 1
+    record_mock.vec_scores = []
+    record_mock.alphas = []
+    record_mock.uncertainties = []
+    record_mock.coverages = []
+    record_mock.scores = None
+    record_mock.alpha = None
+    record_mock.confidences = None
+
+    db.get_latest_scores_record.return_value = record_mock
+
     return db
 
 @pytest.fixture
 def handler():
-    return BatchHandler(user_id="client1", session_id="session1", report_builder=report_builder_factory(user_id="client1"), on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
+    return BatchHandler(user_id="client1", session_id="session1", on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
 
 def test_initialization(handler):
     """Verifica la inicialización correcta de BatchHandler."""
