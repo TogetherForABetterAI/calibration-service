@@ -1,6 +1,7 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Float, Enum as SqEnum, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB, LargeBinary
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.types import LargeBinary
 from src.lib.db_engine import Base
 from src.lib.calibration_stages import CalibrationStage
 

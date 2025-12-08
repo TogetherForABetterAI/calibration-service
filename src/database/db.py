@@ -85,11 +85,11 @@ class Database:
                 if 'push_uncertainties' in updates:
                     values['uncertainties'] = func.array_append(Scores.uncertainties, updates['push_uncertainties'])
                 if 'push_coverages' in updates:
-                    values['coverages'] = func.array_append(Scores.coverages, updates['push_coverages'])
+                    values['coverages'] = func.array_append(Scores.coverages, updates['push_coverages'].item())
                 if 'push_setsizes' in updates:
                     values['setsizes'] = func.array_append(Scores.setsizes, updates['push_setsizes'])
                 if 'push_confidences' in updates:
-                    values['confidences'] = func.coalesce(Scores.confidences, b'') + updates['push_confidences']
+                    values['confidences'] = func.coalesce(Scores.confidences, b'').op('||')(updates['push_confidences'])
 
                 # Actualizaciones escalares
                 if 'accuracy' in updates:
