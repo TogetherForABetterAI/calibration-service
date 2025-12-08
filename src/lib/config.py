@@ -18,14 +18,9 @@ UNCERTAINTY_LIMIT = 20
 
 class ServerConfig:
     def __init__(self):
-        self.service_name = os.getenv("SERVICE_NAME", "calibration-service")
-        self.container_name = os.getenv("CONTAINER_NAME", "")
-        self.upper_bound_clients = int(os.getenv("UPPER_BOUND_CLIENTS", "10"))
-        self.lower_bound_clients = int(os.getenv("LOWER_BOUND_CLIENTS", "3"))
+        self.pod_name = os.getenv("POD_NAME", "calibration-service") # or container name, but for k8s pods are better
+        self.upper_bound_clients = int(os.getenv("UPPER_BOUND_CLIENTS", "100"))
         self.replica_id = int(os.getenv("REPLICA_ID", "1"))
-        self.replica_timeout_seconds = int(os.getenv("REPLICA_TIMEOUT_SECONDS", "180"))
-        self.master_replica_id = int(os.getenv("MASTER_REPLICA_ID", "1"))
-        self.initial_timeout = int(os.getenv("INITIAL_TIMEOUT", "30")) 
         self.client_timeout_seconds = int(os.getenv("CLIENT_TIMEOUT_SECONDS", "60")) 
 
 

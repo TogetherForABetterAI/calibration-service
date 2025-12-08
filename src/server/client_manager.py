@@ -9,6 +9,7 @@ from middleware.consumer import Consumer
 from server.batch_handler import BatchHandler
 import requests
 from enum import Enum
+import pika.exceptions
 
 from src.lib.session_status import SessionStatus
 
@@ -16,6 +17,8 @@ from src.lib.session_status import SessionStatus
 class ClientManager(Process):
     def __init__(
         self,
+        ch,
+        delivery_tag,
         user_id: str,
         session_id: str,
         middleware,
@@ -38,6 +41,8 @@ class ClientManager(Process):
         self.logger = logging.getLogger(f"client-manager-{user_id}")
         self.logger.info(f"Initializing ClientManager for client {user_id}")
         self.user_id = user_id
+        self.ch = ch
+        self.delivery_tag = delivery_tag
         self.middleware = middleware
         self.clients_to_remove_queue = clients_to_remove_queue
         self.consumer = None
@@ -133,9 +138,17 @@ class ClientManager(Process):
         
             if not self.shutdown_initiated and self.clients_to_remove_queue:
                 self.clients_to_remove_queue.put(self.user_id)
-                
+
+        except pika.exceptions.AMQPConnectionError as e:
+            self.logger.error(f"AMQP Connection error in ClientManager for client {self.user_id}: {e}")   
+            # the message will be requeued since the connection was lost before ack
         except Exception as e:
             self.logger.error(f"Error setting up client {self.user_id}: {e}")
+        finally:
+            if self.ch.is_open:
+                self.ch.basic_ack(self.delivery_tag) # acknowledge the original notification message
+                self.logger.info(f"Acknowledged notification message for client {self.user_id}")
+            self.logger.info(f"ClientManager process for client {self.user_id} terminating")
 
     def _handle_predictions_message(self, ch, method, properties, body):
         """Callback for replies queue - calls BatchHandler._handle_predictions_message"""
@@ -143,6 +156,9 @@ class ClientManager(Process):
         with self.last_message_time_lock:
             self.last_message_time = time()
         self.batch_handler._handle_predictions_message(ch, body)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+
 
     def _handle_inputs_message(self, ch, method, properties, body):
         """Callback for inputs queue - calls BatchHandler._handle_inputs_message"""
@@ -150,6 +166,8 @@ class ClientManager(Process):
         with self.last_message_time_lock:
             self.last_message_time = time()
         self.batch_handler._handle_inputs_message(ch, body)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
 
     def update_session_status(self, session_status):
         """Update the session status to the given status in the connections service."""

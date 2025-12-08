@@ -1,5 +1,7 @@
 import logging
+import time
 import pika
+import pika.exceptions
 
 from src.lib.config import CONNECTION_EXCHANGE, CONNECTION_QUEUE_NAME
 
@@ -11,23 +13,33 @@ class Middleware:
         self.consumer_tag = None
         self._is_running = False
         self._on_callback = True
+        self._shutdown_received = False
+        
+        self.connect()
 
-        try:
-            credentials = pika.PlainCredentials(config.username, config.password)
-            self.conn = pika.BlockingConnection(
-                pika.ConnectionParameters(
-                    host=config.host, 
-                    port=config.port, 
-                    credentials=credentials, 
-                    heartbeat=5000
+    def connect(self):
+        """Establish a connection to RabbitMQ with retries."""
+        delay = 5  
+        max_delay = 60 # maximum delay of 1 minute
+        while not self._shutdown_received:
+            try:
+                credentials = pika.PlainCredentials(self.config.username, self.config.password)
+                self.conn = pika.BlockingConnection(
+                    pika.ConnectionParameters(
+                        host=self.config.host, 
+                        port=self.config.port, 
+                        credentials=credentials, 
+                        heartbeat=5000
+                    )
                 )
-            )
-            self.logger.info(
-                f"Connected to RabbitMQ at {config.host}:{config.port} as {config.username}"
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to connect to RabbitMQ: {e}")
-            raise e
+                self.logger.info(
+                    f"Connected to RabbitMQ at {self.config.host}:{self.config.port} as {self.config.username}"
+                )
+                return # suceeded
+            except (pika.exceptions.AMQPConnectionError, Exception) as e:
+                self.logger.error(f"Failed to connect to RabbitMQ: {e}. Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)  # backoff exponential
 
     def is_running(self):
         return self._is_running
@@ -51,10 +63,22 @@ class Middleware:
         )
 
     def create_channel(self, prefetch_count=1):
-        """Create and return a new channel from the shared connection, with optional prefetch_count."""
-        channel = self.conn.channel()
-        channel.basic_qos(prefetch_count=prefetch_count)
-        return channel
+        """Create and return a new channel from the shared connection."""
+        # Ensure the connection is alive
+        if self.conn is None or self.conn.is_closed:
+            self.logger.warning("Connection is closed, reconnecting before creating channel...")
+            self.connect()
+
+        try:
+            channel = self.conn.channel()
+            channel.basic_qos(prefetch_count=prefetch_count)
+            return channel
+        except Exception as e:
+            self.logger.error(f"Failed to create channel: {e}")
+            self.connect()
+            channel = self.conn.channel()
+            channel.basic_qos(prefetch_count=prefetch_count)
+            return channel
 
     def declare_queue(self, channel, queue_name: str, durable: bool = False):
         try:
@@ -98,12 +122,13 @@ class Middleware:
             )
             raise e
 
-    def basic_consume(self, channel, queue_name: str, callback_function) -> str:
+    def basic_consume(self, channel, queue_name: str, callback_function, consumer_tag=None) -> str:
         self.logger.info(f"Setting up consumer for queue: {queue_name}")
         self.consumer_tag = channel.basic_consume(
             queue=queue_name,
             on_message_callback=self.callback_wrapper(callback_function),
             auto_ack=False,
+            consumer_tag=consumer_tag
         )
     
     def basic_send(
@@ -127,30 +152,19 @@ class Middleware:
                 f"with routing key '{routing_key}': {e}"
             )
             raise e 
-    
-    def on_callback(self):
-        return self._on_callback
         
     def callback_wrapper(self, callback_function):
-        self._on_callback = True
         def wrapper(ch, method, properties, body):
             if not self._is_running:
-                self.cancel_channel_consuming(ch)
                 return
-            
             try:
                 callback_function(ch, method, properties, body)
-                ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
                 self.logger.error(
                     f"action: rabbitmq_callback | result: fail | error: {e}"
                 )
-                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-
-            if not self._is_running:
-                self.cancel_channel_consuming(ch)
-
-        self._on_callback = False
+                if ch.is_open:
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         return wrapper
 
     def start_consuming(self, channel):
@@ -161,29 +175,24 @@ class Middleware:
                 channel.start_consuming()
         except KeyboardInterrupt:
             self.logger.error("Received interrupt signal, stopping consumption")
+        except (pika.exceptions.ConnectionClosedByBroker, pika.exceptions.AMQPConnectionError) as e:
+            self.logger.error(f"Connection lost while consuming: {e}")
+            raise e
 
     def close_channel(self, channel):
         try:
-            if self._is_running:
-                raise Exception("Cannot close channel while middleware is running")
-            
             if channel and channel.is_open:
-                channel.basic_cancel(self.consumer_tag)
-                channel.stop_consuming()
                 channel.close()
                 self.logger.info("Stopped consuming messages")
         except Exception as e:
             self.logger.error(f"action: rabbitmq_channel_close | result: fail | error: {e}")
-
-    def cancel_channel_consuming(self, channel):
-        if channel and channel.is_open:
-            self.logger.info(f"Cancelling consumer for channel: {channel}")
-            channel.basic_cancel(consumer_tag=self.consumer_tag)
-            channel.stop_consuming()
             
-    def stop_consuming(self):
+    def stop_consuming(self, channel):
         self._is_running = False
-        self.logger.info("Stopped consuming messages")
+        if channel and channel.is_open and self.consumer_tag:
+            channel.basic_cancel(self.consumer_tag)
+            channel.stop_consuming()
+            self.logger.info("Stopped consuming messages")
 
     def delete_queue(self, channel, queue_name: str):
         try:
@@ -194,12 +203,12 @@ class Middleware:
 
     def close_connection(self):
         try:
-            if self._is_running:
-                raise Exception("Cannot close connection while middleware is running")
-            
-            self.conn.close()
+            if self.conn is not None and not self.conn.is_closed:
+                self.conn.close()
             self.logger.info("RabbitMQ connection closed")
         except Exception as e:
             self.logger.error(f"Failed to close RabbitMQ connection: {e}")
             raise e
         
+    def handle_sigterm(self):
+        self._shutdown_received = True
