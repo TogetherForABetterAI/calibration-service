@@ -9,7 +9,6 @@ class Scores(Base):
     __tablename__ = "scores"
 
     session_id = Column(UUID(as_uuid=True), primary_key=True)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     batchs_counter = Column(Integer, default=0, nullable=False)
     stage = Column(SqEnum(CalibrationStage), nullable=False, default=CalibrationStage.INITIAL_CALIBRATION)
     

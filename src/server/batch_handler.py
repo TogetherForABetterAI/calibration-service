@@ -28,8 +28,8 @@ class BatchHandler:
         self._channel = self._middleware.create_channel()
         self._session_id = session_id
         self._inputs_format = inputs_format
+        self.uq = UtraceCalculator(database=self._db, session_id=self._session_id)
         self._build_state()
-        self.uq = UtraceCalculator(database=self._db, user_id=self.user_id, session_id=self._session_id)
         """
         The line above should change to store only scores instead of probabilities per class and labels.
         self._batches: Dict[int, np.ndarray] = {}
@@ -43,20 +43,29 @@ class BatchHandler:
         outputs = self._db.get_outputs_from_session(self._session_id)
         for output in outputs:
             self._restore_outputs_data(output)
+
+        if self._inputs_eof and self._outputs_eof:
+            self._handle_eof()
          
     def _restore_inputs_data(self, body):
         message = dataset_service_pb2.DataBatchLabeled()
         message.ParseFromString(body)
         images = self._process_input_data(message.data)
         self.store_inputs(
-            message.batch_index, images, message.is_last_batch, np.array(list(message.labels)))
+            batch_index=message.batch_index, inputs=images, labels=np.array(list(message.labels)), persist=False)
+        
+        if message.is_last_batch:
+            self._inputs_eof = True
         
     def _restore_outputs_data(self, body):
         message = calibration_pb2.Predictions()
         message.ParseFromString(body)
         probs = np.array([list(p.values) for p in message.pred], dtype=np.float32)
-        self.store_outputs(message.batch_index, probs)
-            
+        self.store_outputs(batch_index=message.batch_index, probs=probs, persist=False)
+        
+        if message.eof:
+            self._outputs_eof = True
+
     def handle_sigterm(self):
         """Stop processing and clean up resources."""
         pass
@@ -99,7 +108,7 @@ class BatchHandler:
                 )
                 return
 
-            self.store_outputs(message.batch_index, probs)
+            self.store_outputs(batch_index=message.batch_index, probs=probs, original_body=body, persist=True)
             # scores = run_calibration_algorithm(probs) 
 
             if message.eof:
@@ -131,7 +140,7 @@ class BatchHandler:
                 )
                 return
 
-            self.store_inputs(message.batch_index, images, np.array(list(message.labels)))
+            self.store_inputs(batch_index=message.batch_index, inputs=images, labels=np.array(list(message.labels)), original_body=body, persist=True)
 
             if message.is_last_batch:
                 self._inputs_eof = True
@@ -182,20 +191,35 @@ class BatchHandler:
         return data_array
             
 
-    def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray]):
-        self._store_data(batch_index, DataType.PROBS, probs)
+    def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray], original_body: bytes = None, persist: bool = True):
+        self._store_data(batch_index, DataType.PROBS, probs, process_entry=persist)
+        if persist:
+            self._db.write_outputs(
+                session_id=self._session_id,
+                outputs=original_body,
+                batch_index=batch_index,
+            )
 
     def store_inputs(
         self,
         batch_index: int,
         inputs: np.ndarray,
         labels: np.ndarray,
+        original_body: bytes = None,    
+        persist: bool = True,
     ):
-        self._store_data(batch_index, DataType.INPUTS, inputs)
-        self._store_data(batch_index, DataType.LABELS, labels)
+        self._store_data(batch_index, DataType.INPUTS, inputs, process_entry=persist)
+        self._store_data(batch_index, DataType.LABELS, labels, process_entry=persist)
+        if persist:
+            self._db.write_inputs(
+                session_id=self._session_id,
+                inputs=original_body,
+                batch_index=batch_index,
+            )
+
 
     def _store_data(
-        self, batch_index: int, kind: DataType, data: np.ndarray
+        self, batch_index: int, kind: DataType, data: np.ndarray, process_entry: bool = True
     ):
         if batch_index not in self._batches:
             self._batches[batch_index] = {
@@ -207,7 +231,7 @@ class BatchHandler:
         self._batches[batch_index][kind] = data
         entry = self._batches[batch_index]
 
-        if all(
+        if process_entry and all(
             entry[kind] is not None
             for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
         ):

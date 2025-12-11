@@ -8,9 +8,8 @@ from utrace.uncertaintyQuantifier import UncertaintyQuantifier
 from utrace.utils.utils import flatten_batch, get_coverage
 
 class UtraceCalculator:
-    def __init__(self, database, user_id, session_id, model_type="MNIST"):
+    def __init__(self, database, session_id, model_type="MNIST"):
         self._db = database
-        self._user_id = user_id
         self._session_id = session_id
         
         # Estado Inicial
@@ -35,8 +34,9 @@ class UtraceCalculator:
     def restore_session(self):
         """Carga el estado desde la DB para tolerancia a fallos."""
 
-        record = self._db.get_latest_scores_record(self._user_id, self._session_id)
+        record = self._db.get_latest_scores_record(self._session_id)
         if not record:
+            self._db.create_scores_record(self._session_id)
             return
 
         # Restaurar contadores y stage
@@ -136,8 +136,7 @@ class UtraceCalculator:
             updates['correct_preds'] = metrics['correct_preds']
             updates['total_samples'] = metrics['total_samples']
 
-        logging.info(f"Updating values: {updates}")
-        self._db.update_session_state(self._user_id, self._session_id, updates)
+        self._db.update_session_state(self._session_id, updates)
 
     def _update_accuracy_stats(self, probs, labels):
         """Calcula accuracy y guarda confidencias."""

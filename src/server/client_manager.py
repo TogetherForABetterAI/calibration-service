@@ -11,21 +11,20 @@ import requests
 from enum import Enum
 import pika.exceptions
 
+from src.database.db import Database
+from src.lib.db_engine import get_engine
 from src.lib.session_status import SessionStatus
 
 
 class ClientManager(Process):
     def __init__(
         self,
-        ch,
-        delivery_tag,
         user_id: str,
         session_id: str,
         middleware,
         clients_to_remove_queue: Queue,
         config,
         report_builder,
-        database=None,
         inputs_format=None,
         recipient_email=None,
     ):
@@ -41,22 +40,20 @@ class ClientManager(Process):
         self.logger = logging.getLogger(f"client-manager-{user_id}")
         self.logger.info(f"Initializing ClientManager for client {user_id}")
         self.user_id = user_id
-        self.ch = ch
-        self.delivery_tag = delivery_tag
         self.middleware = middleware
         self.clients_to_remove_queue = clients_to_remove_queue
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
         self.report_builder = report_builder
-        self.database = database
+        self.database = None
         self.session_id = session_id
         self.inputs_format = inputs_format
         self.recipient_email = recipient_email
+        self.config = config
 
         # Timeout management
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connections-service:8000")
-        self.client_timeout_seconds = config.client_timeout_seconds
         self.last_message_time = time()
         self.last_message_time_lock = threading.Lock()
         self.timeout_checker_handler = threading.Thread(target=self._timeout_checker)
@@ -69,11 +66,11 @@ class ClientManager(Process):
 
     def _timeout_checker(self):
         """Periodically check for timeouts in BatchHandler."""
-        check_interval = self.client_timeout_seconds / 2
+        check_interval = self.config.server_config.client_timeout_seconds / 2
     
         while not self.shutdown_initiated:
             with self.last_message_time_lock:
-                if (time() - self.last_message_time > self.client_timeout_seconds):
+                if (time() - self.last_message_time > self.config.server_config.client_timeout_seconds):
                     logging.info(f"Client {self.user_id} timed out due to inactivity.")
                     self.update_session_status(SessionStatus.TIMEOUT)
                     self._initiate_shutdown(source_thread=threading.current_thread())
@@ -113,6 +110,7 @@ class ClientManager(Process):
         """
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         self.timeout_checker_handler.start()
+        self.database = Database(get_engine(self.config.database_url))
 
         try:
             logging.info(f"ClientManager process started for client {self.user_id}")
@@ -145,9 +143,6 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error setting up client {self.user_id}: {e}")
         finally:
-            if self.ch.is_open:
-                self.ch.basic_ack(self.delivery_tag) # acknowledge the original notification message
-                self.logger.info(f"Acknowledged notification message for client {self.user_id}")
             self.logger.info(f"ClientManager process for client {self.user_id} terminating")
 
     def _handle_predictions_message(self, ch, method, properties, body):
@@ -176,7 +171,7 @@ class ClientManager(Process):
             status = session_status.name().lower()
             url = f"{self.connections_service_url}/sessions/{self.session_id}/status/{status}"
             headers = {"Content-Type": "application/json"}
-            response = requests.put(url, json={"status": session_status.name()}, headers=headers)
+            response = requests.put(url, json={"user_id": self.user_id}, headers=headers)
             with self.status_lock:
                 self.status = session_status
 

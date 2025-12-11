@@ -25,7 +25,7 @@ class Server():
         self.listener = Listener(
             middleware=self.middleware,
             channel=channel,
-            config=self.config.server_config,
+            config=self.config,
             cm_middleware_factory=cm_middleware_factory,
             report_builder_factory=report_builder_factory,
             logger=self.logger,

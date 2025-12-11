@@ -11,10 +11,8 @@ class ModelOutputs(Base):
 
     session_id = Column(UUID(as_uuid=True), nullable=False, primary_key=True)
     batch_index = Column(Integer, nullable=False, primary_key=True)
-    user_id = Column(UUID(as_uuid=True))
     timestamp = Column(DateTime, default=datetime.utcnow)
     outputs = Column(LargeBinary)
-    status = Column(String, nullable=False)
 
     def __repr__(self) -> str:
         return f"ModelOutputs(user_id={self.user_id}, status={self.status}, outputs={self.outputs})"

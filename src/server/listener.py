@@ -6,6 +6,7 @@ from lib.config import CONNECTION_QUEUE_NAME
 from server.client_manager import ClientManager
 import json
 import pika.exceptions
+from src.lib.client_manager_handler import ClientManagerHandler
 from src.lib.inputs_format_parser import parse_inputs_format
 
 
@@ -21,14 +22,11 @@ class Listener:
         logger=None,
     ):
         self.middleware = middleware
-        self.middleware_config = (
-            middleware.config
-        )  # Store config to pass to child processes
         self.middleware.basic_consume(
             channel=channel,
             queue_name=CONNECTION_QUEUE_NAME,
             callback_function=self._handle_new_client,
-            consumer_tag=config.pod_name
+            consumer_tag=config.server_config.pod_name
         )
 
         self.logger = logger or logging.getLogger("listener")
@@ -96,12 +94,12 @@ class Listener:
 
     def reconnect_to_middleware(self):
         self.middleware.connect()
-        self.channel = self.middleware.create_channel(prefetch_count=self.config.upper_bound_clients)
+        self.channel = self.middleware.create_channel(prefetch_count=self.config.server_config.upper_bound_clients)
         self.middleware.basic_consume(
             channel=self.channel,
             queue_name=CONNECTION_QUEUE_NAME,
             callback_function=self._handle_new_client,
-            consumer_tag=self.config.pod_name
+            consumer_tag=self.config.server_config.pod_name
             )
     
     # Callback for new client notifications
@@ -114,35 +112,33 @@ class Listener:
         session_id = notification.get("session_id")
         inputs_format = parse_inputs_format(notification.get("inputs_format"))
         recipient_email = notification.get("email")
+        logging.info(f"Parsed notification for user_id: {user_id}, session_id: {session_id}")
 
         if not user_id or not session_id:
             self.logger.info(
                 f"Client notification missing fields: {notification}"
             )
-            raise ValueError("Client notification missing fields") # dont requeue
+            raise ValueError("Client notification missing fields") 
         
 
         if not self.middleware.is_running():
             self.logger.info(
                 f"Shutdown initiated, ignoring new client {user_id}"
             )
-            return # the message will be requeued since we didnt ack it
+            raise RuntimeError("Shutdown initiated") 
         
         client_manager = ClientManager(
-            ch=ch,
-            delivery_tag=method.delivery_tag,
             user_id=user_id,
             session_id=session_id,
-            middleware=self.cm_middleware_factory(self.middleware_config),
+            middleware=self.cm_middleware_factory(self.config.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
             report_builder=self.report_builder_factory(user_id=user_id),
             config=self.config,
-            database=self.database,
             inputs_format=inputs_format,
             recipient_email=recipient_email,
         )
         self.logger.info(f"Created ClientManager for client {user_id}")
-        self._add_client(user_id, client_manager)
+        self._add_client(user_id, client_manager, ch, method.delivery_tag)
 
         self.logger.info(f"Starting ClientManager for client {user_id}")
         client_manager.start()
@@ -151,13 +147,24 @@ class Listener:
         """Remove a finished client manager from the active clients dict"""
         with self._active_clients_lock:
             if user_id in self._active_clients:
+                handler = self._active_clients[user_id]
+                logging.info(f"ENVIO ACK para {user_id}...")
+                try:
+                    self.middleware.add_callback_threadsafe(handler.send_ack)
+                except Exception as e:
+                    self.logger.error(f"Error sending ACK for client {user_id}: {e}")
                 del self._active_clients[user_id]
                 self.logger.info(f"Removed ClientManager for client {user_id}")
 
-    def _add_client(self, user_id: str, handler: ClientManager):
+    def _add_client(self, user_id: str, process_handler: ClientManager, ch: pika.channel.Channel, delivery_tag: int):
         """Add a new client manager to the active clients dict"""
         with self._active_clients_lock:
             if user_id not in self._active_clients:
+                handler = ClientManagerHandler(
+                    process_handler=process_handler,
+                    ch=ch,
+                    delivery_tag=delivery_tag
+                )
                 self._active_clients[user_id] = handler
                 self.logger.info(f"Added ClientManager for client {user_id}")
 
@@ -175,6 +182,8 @@ class Listener:
                 try:
                     handler.terminate()
                     handler.join()
+                    logging.info(f"ENVIO NACK para {user_id}...")
+                    handler.send_nack()
                     self.logger.info(f"Terminated ClientManager for client {user_id}...")
                 except Exception as e:
                     self.logger.error(
