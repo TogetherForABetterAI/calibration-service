@@ -20,11 +20,15 @@ def main():
         return Middleware(config=config)
     
     def report_builder_factory(user_id: str):
-        from src.server.batch_handler import ReportBuilder
+        from src.server.report_builder import ReportBuilder
         return ReportBuilder(user_id=user_id, email_sender=config.email_sender, email_password=config.email_password)
     
+    def utrace_calculator_factory(database=None, session_id=None):
+        from src.server.utrace_calculator import UtraceCalculator
+        return UtraceCalculator(database=database, session_id=session_id)
+    
     db = Database(get_engine(config.database_url))
-    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory, database=db)
+    server = Server(config, middleware_cls=middleware, cm_middleware_factory=middleware_factory, report_builder_factory=report_builder_factory, utrace_calculator_factory=utrace_calculator_factory, database=db)
     server.run()
     
 

@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.tests
+    environment:
+      - ENVIRONMENT=TEST
     volumes:
       - ./reports:/app/reports
       - ./src/proto:/app/src/proto

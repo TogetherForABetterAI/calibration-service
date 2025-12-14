@@ -11,22 +11,23 @@ import requests
 from enum import Enum
 import pika.exceptions
 
+from src.database.db import Database
+from src.lib.db_engine import get_engine
 from src.lib.session_status import SessionStatus
 
 
 class ClientManager(Process):
     def __init__(
         self,
-        ch,
-        delivery_tag,
         user_id: str,
         session_id: str,
         middleware,
         clients_to_remove_queue: Queue,
         config,
         report_builder,
-        database=None,
+        utrace_calculator_factory,
         inputs_format=None,
+        recipient_email=None,
     ):
         """
         Initialize ClientManager as a Process.
@@ -40,21 +41,22 @@ class ClientManager(Process):
         self.logger = logging.getLogger(f"client-manager-{user_id}")
         self.logger.info(f"Initializing ClientManager for client {user_id}")
         self.user_id = user_id
-        self.ch = ch
-        self.delivery_tag = delivery_tag
         self.middleware = middleware
         self.clients_to_remove_queue = clients_to_remove_queue
         self.consumer = None
         self.batch_handler = None
         self.shutdown_initiated = False
         self.report_builder = report_builder
-        self.database = database
+        self.database = None
         self.session_id = session_id
         self.inputs_format = inputs_format
+        self.recipient_email = recipient_email
+        self.utrace_calculator_factory = utrace_calculator_factory
+        self.utrace_calculator = None
+        self.config = config
 
         # Timeout management
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connections-service:8000")
-        self.client_timeout_seconds = config.client_timeout_seconds
         self.last_message_time = time()
         self.last_message_time_lock = threading.Lock()
         self.timeout_checker_handler = threading.Thread(target=self._timeout_checker)
@@ -67,11 +69,11 @@ class ClientManager(Process):
 
     def _timeout_checker(self):
         """Periodically check for timeouts in BatchHandler."""
-        check_interval = self.client_timeout_seconds / 2
+        check_interval = self.config.server_config.client_timeout_seconds / 2
     
         while not self.shutdown_initiated:
             with self.last_message_time_lock:
-                if (time() - self.last_message_time > self.client_timeout_seconds):
+                if (time() - self.last_message_time > self.config.server_config.client_timeout_seconds):
                     logging.info(f"Client {self.user_id} timed out due to inactivity.")
                     self.update_session_status(SessionStatus.TIMEOUT)
                     self._initiate_shutdown(source_thread=threading.current_thread())
@@ -104,7 +106,6 @@ class ClientManager(Process):
             
             self.timeout_checker_handler.join(timeout=2)
 
-
     def run(self):
         """
         Main process loop: parse message, setup queues, create consumer, and start processing.
@@ -112,6 +113,8 @@ class ClientManager(Process):
         """
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         self.timeout_checker_handler.start()
+        self.database = Database(get_engine(self.config.database_url))
+        self.utrace_calculator = self.utrace_calculator_factory(database=self.database, session_id=self.session_id)
 
         try:
             logging.info(f"ClientManager process started for client {self.user_id}")
@@ -119,10 +122,10 @@ class ClientManager(Process):
                 user_id=self.user_id,
                 session_id=self.session_id,
                 on_eof=self._handle_EOF_message,    
-                report_builder=self.report_builder,
                 middleware=self.middleware,
                 database=self.database,
                 inputs_format=self.inputs_format,
+                utrace_calculator=self.utrace_calculator,
             )
 
             self.consumer = Consumer(
@@ -145,9 +148,6 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error setting up client {self.user_id}: {e}")
         finally:
-            if self.ch.is_open:
-                self.ch.basic_ack(self.delivery_tag) # acknowledge the original notification message
-                self.logger.info(f"Acknowledged notification message for client {self.user_id}")
             self.logger.info(f"ClientManager process for client {self.user_id} terminating")
 
     def _handle_predictions_message(self, ch, method, properties, body):
@@ -176,7 +176,7 @@ class ClientManager(Process):
             status = session_status.name().lower()
             url = f"{self.connections_service_url}/sessions/{self.session_id}/status/{status}"
             headers = {"Content-Type": "application/json"}
-            response = requests.put(url, json={"status": session_status.name()}, headers=headers)
+            response = requests.put(url, json={"user_id": self.user_id}, headers=headers)
             with self.status_lock:
                 self.status = session_status
 
@@ -187,8 +187,22 @@ class ClientManager(Process):
         except Exception as e:
             self.logger.error(f"Error updating session {self.session_id} status: {e}")
 
+    def send_report(self):
+        """
+        Build and send report when both labeled and replies data are complete.
+        """
+        
+        self.report_builder.generate_report(self.batch_handler.get_calibration_results())  
+
+        logging.info(f"Sending report to {self.recipient_email} for client {self.user_id}")
+        self.report_builder.send_report(self.recipient_email)
+
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
+
+        if self.config.environment == "PRODUCTION":
+            self.send_report()
+
         self.logger.info(f"Received EOF message for client {self.user_id}")
         self.consumer.handle_sigterm()
         self.batch_handler.handle_sigterm()

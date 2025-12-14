@@ -164,8 +164,14 @@ class Middleware:
                     f"action: rabbitmq_callback | result: fail | error: {e}"
                 )
                 if ch.is_open:
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         return wrapper
+    
+    def add_callback_threadsafe(self, func):
+        if self.conn is not None and not self.conn.is_closed:
+            self.conn.add_callback_threadsafe(func)
+        else:
+            self.logger.error("Cannot add callback, connection is closed.")
 
     def start_consuming(self, channel):
         try:

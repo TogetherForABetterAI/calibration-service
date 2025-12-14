@@ -10,6 +10,11 @@ MLFLOW_EXCHANGE = "mlflow_exchange"
 MLFLOW_ROUTING_KEY = "mlflow.key"
 INPUTS_QUEUE_NAME = "inputs_cal_queue"
 OUTPUTS_QUEUE_NAME = "outputs_cal_queue"
+INTI_LOGO_PATH = "reports/img/inti_logo.png"
+SIGNATURE_PATH = "reports/img/signature.jpg"
+REPORTS_DIR = "reports/"
+CALIBRATION_LIMIT = 10
+UNCERTAINTY_LIMIT = 20
 
 class ServerConfig:
     def __init__(self):
@@ -42,6 +47,7 @@ class GlobalConfig:
         postgres_db = os.getenv("POSTGRES_DB", "calibration_db")
         self.database_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connection-service:8000")
+        self.environment = os.getenv("ENVIRONMENT", "PRODUCTION")
 
 
 def initialize_config():

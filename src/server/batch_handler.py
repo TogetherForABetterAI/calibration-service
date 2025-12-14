@@ -2,9 +2,10 @@ import logging
 from typing import Dict, List, Union
 import numpy as np
 from proto import calibration_pb2, mlflow_probs_pb2, dataset_service_pb2
+from src.lib.calibration_stages import CalibrationStage
 from src.lib.data_types import DataType
 from src.lib.config import MLFLOW_EXCHANGE, MLFLOW_ROUTING_KEY
-from src.lib.report_builder import ReportBuilder
+from src.server.utrace_calculator import UtraceCalculator
 
 
 class BatchHandler:
@@ -13,13 +14,12 @@ class BatchHandler:
         user_id: str,
         session_id: str,
         on_eof,
-        report_builder,
         middleware,
+        utrace_calculator,
         database=None,
         inputs_format=None,
     ):
         self.user_id = user_id
-        self._report_builder = report_builder
         self._inputs_eof = False
         self._outputs_eof = False
         self._batches: Dict[int, Dict] = {}
@@ -27,9 +27,9 @@ class BatchHandler:
         self._db = database
         self._middleware = middleware
         self._channel = self._middleware.create_channel()
-        self._scores = self._db.get_scores_from_session(user_id)
         self._session_id = session_id
         self._inputs_format = inputs_format
+        self.uq = utrace_calculator
         self._build_state()
         """
         The line above should change to store only scores instead of probabilities per class and labels.
@@ -44,44 +44,49 @@ class BatchHandler:
         outputs = self._db.get_outputs_from_session(self._session_id)
         for output in outputs:
             self._restore_outputs_data(output)
+
+        if self._inputs_eof and self._outputs_eof:
+            self._handle_eof()
          
     def _restore_inputs_data(self, body):
         message = dataset_service_pb2.DataBatchLabeled()
         message.ParseFromString(body)
         images = self._process_input_data(message.data)
         self.store_inputs(
-            message.batch_index, images, message.is_last_batch, np.array(list(message.labels)))
+            batch_index=message.batch_index, inputs=images, labels=np.array(list(message.labels)), persist=False)
+        
+        if message.is_last_batch:
+            self._inputs_eof = True
         
     def _restore_outputs_data(self, body):
         message = calibration_pb2.Predictions()
         message.ParseFromString(body)
         probs = np.array([list(p.values) for p in message.pred], dtype=np.float32)
-        self.store_outputs(message.batch_index, probs)
-            
+        self.store_outputs(batch_index=message.batch_index, probs=probs, persist=False)
+        
+        if message.eof:
+            self._outputs_eof = True
+
     def handle_sigterm(self):
         """Stop processing and clean up resources."""
         pass
 
-    def send_report(self):
-        """
-        Build and send report when both labeled and replies data are complete.
-        y_pred and y_test are the outputs of the calibration process. For now, we build them from stored data.
-        In the future, we should change this to use the scores only.
-
-        y_pred: List of predicted probabilities
-        y_test: List of true labels
-        """
-        y_pred = []
-        y_test = []
+    def get_calibration_results(self):
+        metrics = self.uq.get_calibration_results()
+        y_pred = np.array([])
+        y_true = np.array([])
         for batch in self._batches.values():
             if batch[DataType.PROBS] is not None and batch[DataType.LABELS] is not None:
-                y_pred.extend(batch[DataType.PROBS])
-                y_test.extend(batch[DataType.LABELS])
+                probs = batch[DataType.PROBS]
+                labels = batch[DataType.LABELS]
+                preds = np.argmax(probs, axis=1)
+                y_pred = np.concatenate((y_pred, preds))
+                y_true =  np.concatenate((y_true, labels.ravel()))
 
-        self._report_builder.build_report(y_test, y_pred)
-        logging.info(f"action: build_report | result: success | user_id: {self.user_id}")
-        self._report_builder.send_report("guldenjf@gmail.com")
-        logging.info(f"action: send_report | result: success | user_id: {self.user_id}")
+        metrics["raw_data"]["y_pred"] = np.array(y_pred)
+        metrics["raw_data"]["y_true"] = np.array(y_true)
+        return metrics
+
 
 
     def _handle_predictions_message(self, ch, body):
@@ -104,15 +109,14 @@ class BatchHandler:
                 )
                 return
 
-            self.store_outputs(message.batch_index, probs)
+            self.store_outputs(batch_index=message.batch_index, probs=probs, original_body=body, persist=True)
             # scores = run_calibration_algorithm(probs) 
 
             if message.eof:
                 self._outputs_eof = True
 
             if self._inputs_eof and self._outputs_eof:
-                self.send_report()
-                self._on_eof() 
+                self._handle_eof()
 
         except Exception as e:
             logging.error(
@@ -137,14 +141,13 @@ class BatchHandler:
                 )
                 return
 
-            self.store_inputs(message.batch_index, images, np.array(list(message.labels)))
+            self.store_inputs(batch_index=message.batch_index, inputs=images, labels=np.array(list(message.labels)), original_body=body, persist=True)
 
             if message.is_last_batch:
                 self._inputs_eof = True
 
             if self._inputs_eof and self._outputs_eof:
-                self.send_report()
-                self._on_eof() 
+                self._handle_eof()
                 
         except Exception as e:
             logging.error(
@@ -152,6 +155,10 @@ class BatchHandler:
             )
             raise e
         
+    def _handle_eof(self):
+        self.uq.update_stage(CalibrationStage.FINISHED)
+        self._on_eof()  
+
     def _process_input_data(self, data):
         
         data_array = np.frombuffer(data, dtype=self._inputs_format.dtype)
@@ -185,20 +192,35 @@ class BatchHandler:
         return data_array
             
 
-    def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray]):
-        self._store_data(batch_index, DataType.PROBS, probs)
+    def store_outputs(self, batch_index: int, probs: Union[List[float], np.ndarray], original_body: bytes = None, persist: bool = True):
+        self._store_data(batch_index, DataType.PROBS, probs, process_entry=persist)
+        if persist:
+            self._db.write_outputs(
+                session_id=self._session_id,
+                outputs=original_body,
+                batch_index=batch_index,
+            )
 
     def store_inputs(
         self,
         batch_index: int,
         inputs: np.ndarray,
         labels: np.ndarray,
+        original_body: bytes = None,    
+        persist: bool = True,
     ):
-        self._store_data(batch_index, DataType.INPUTS, inputs)
-        self._store_data(batch_index, DataType.LABELS, labels)
+        self._store_data(batch_index, DataType.INPUTS, inputs, process_entry=persist)
+        self._store_data(batch_index, DataType.LABELS, labels, process_entry=persist)
+        if persist:
+            self._db.write_inputs(
+                session_id=self._session_id,
+                inputs=original_body,
+                batch_index=batch_index,
+            )
+
 
     def _store_data(
-        self, batch_index: int, kind: DataType, data: np.ndarray
+        self, batch_index: int, kind: DataType, data: np.ndarray, process_entry: bool = True
     ):
         if batch_index not in self._batches:
             self._batches[batch_index] = {
@@ -210,33 +232,38 @@ class BatchHandler:
         self._batches[batch_index][kind] = data
         entry = self._batches[batch_index]
 
-        if all(
+        if process_entry and all(
             entry[kind] is not None
             for kind in [DataType.INPUTS, DataType.PROBS, DataType.LABELS]
         ):
-            mlflow_msg = mlflow_probs_pb2.MlflowProbs()
-            for p in entry[DataType.PROBS]:
-                prob = mlflow_probs_pb2.PredictionList()
-                prob.values.extend(p)
-                mlflow_msg.pred.append(prob)
+            self.uq.process_entry(entry)
+            self.send_mlflow_msg(batch_index, entry)
+            # del self._batches[batch_index]
 
-            mlflow_msg.batch_index = batch_index
-            mlflow_msg.client_id = self.user_id
-            mlflow_msg.session_id = self._session_id
-            mlflow_msg.data = entry[DataType.INPUTS].tobytes()
-            mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
-            mlflow_body = mlflow_msg.SerializeToString()
+    def send_mlflow_msg(self, batch_index, entry):
+        mlflow_msg = mlflow_probs_pb2.MlflowProbs()
+        for p in entry[DataType.PROBS]:
+            prob = mlflow_probs_pb2.PredictionList()
+            prob.values.extend(p)
+            mlflow_msg.pred.append(prob)
 
-            self._middleware.basic_send(
+        mlflow_msg.batch_index = batch_index
+        mlflow_msg.client_id = self.user_id
+        mlflow_msg.session_id = self._session_id
+        mlflow_msg.data = entry[DataType.INPUTS].tobytes()
+        mlflow_msg.labels.extend(entry[DataType.LABELS].tolist())
+        mlflow_body = mlflow_msg.SerializeToString()
+
+        self._middleware.basic_send(
                 channel=self._channel,  
                 exchange_name=MLFLOW_EXCHANGE,
                 routing_key=MLFLOW_ROUTING_KEY,
                 body=mlflow_body,
             )
-            logging.info(
-                f"action: send_mlflow_message | "
-                f"user_id: {self.user_id} | "
-                f"session_id: {self._session_id} | "
-                f"batch_index: {batch_index} | "
-                f"result: success"
-            )
+        logging.info(
+            f"action: send_mlflow_message | "
+            f"user_id: {self.user_id} | "
+            f"session_id: {self._session_id} | "
+            f"batch_index: {batch_index} | "
+            f"result: success"
+        )
