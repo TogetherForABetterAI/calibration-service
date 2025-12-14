@@ -35,13 +35,11 @@ class ReportBuilder:
         self.email_sender = email_sender
         self.email_password = email_password
         self._styles = self._create_styles()
-
-        # Inicializar documento base
         self._doc = SimpleDocTemplate(
             self._pdf_path,
             pagesize=A4,
-            title="Informe de Evaluación Metrológica",
-            author="INTI - Metrología de Datos",
+            title="Informe de Evaluación de Incertidumbre",
+            author="INTI - Departamento de Inteligencia Artificial",
             leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm,
         )
         
@@ -49,8 +47,6 @@ class ReportBuilder:
 
     def _create_styles(self):
         styles = getSampleStyleSheet()
-        
-        # Estilo Título Azul INTI
         styles.add(ParagraphStyle(
             name="Heading1Blue",
             parent=styles['Heading1'],
@@ -61,7 +57,6 @@ class ReportBuilder:
             alignment=TA_LEFT
         ))
         
-        # Estilo Título Centrado
         styles.add(ParagraphStyle(
             name="CenterTitle",
             parent=styles['Title'],
@@ -71,8 +66,6 @@ class ReportBuilder:
             alignment=TA_CENTER,
             spaceAfter=20
         ))
-        
-        # Estilo Texto Normal Justificado
         styles.add(ParagraphStyle(
             name="NormalJustified",
             parent=styles['Normal'],
@@ -88,7 +81,6 @@ class ReportBuilder:
         canvas.setFont('Helvetica', 9)
         canvas.drawString(2 * cm, 1.5 * cm, "U-TraCE Calibration Report")
         canvas.drawRightString(19 * cm, 1.5 * cm, f"Página {doc.page}")
-        # Línea decorativa azul al pie
         canvas.setStrokeColor(colors.HexColor("#004C91"))
         canvas.setLineWidth(1)
         canvas.line(2*cm, 2*cm, 19*cm, 2*cm)
@@ -100,7 +92,6 @@ class ReportBuilder:
         """
         story = []
         
-        # Datos desempaquetados
         metrics = calibration_results.get("metrics", {})
         history = calibration_results.get("history", {})
         raw_data = calibration_results.get("raw_data", {})
@@ -119,7 +110,7 @@ class ReportBuilder:
         story.append(Spacer(1, 1.5*cm))
         story.append(Paragraph("INSTITUTO NACIONAL DE TECNOLOGÍA INDUSTRIAL", self._styles["Heading1Blue"]))
         story.append(Spacer(1, 0.2*cm))
-        story.append(Paragraph("Informe de Evaluación Metrológica de Modelo de Inteligencia Artificial", self._styles["CenterTitle"]))
+        story.append(Paragraph("Informe de Evaluación de Incertidumbre de Inteligencia Artificial", self._styles["CenterTitle"]))
         story.append(Spacer(1, 1.5*cm))
         
         # Datos del cliente
@@ -142,7 +133,7 @@ class ReportBuilder:
         table_data = [["Métrica de Desempeño", "Valor Obtenido"]]
         for k, v in metrics.items():
             val_str = f"{v:.4f}" if isinstance(v, float) else str(v)
-            if "Coverage" in k: val_str = f"{v:.2%}" # Formato porcentaje para cobertura
+            if "Coverage" in k: val_str = f"{v:.2%}"
             table_data.append([k, val_str])
 
         table = Table(table_data, colWidths=[10*cm, 5*cm])
@@ -212,7 +203,6 @@ class ReportBuilder:
         except Exception as e:
             logging.error(f"Error Hist: {e}")
 
-        # Insertar imágenes lado a lado si existen
         if row_images:
             if len(row_images) == 2:
                 table_imgs = Table([row_images], colWidths=[8.5*cm, 8.5*cm])
@@ -249,7 +239,7 @@ class ReportBuilder:
         acc = metrics.get("Accuracy", 0)
         cov = metrics.get("Empirical Coverage", 0)
         
-        verdict = "SATISFACTORIO" if (cov >= 0.90) else "REQUIERE REVISIÓN" # Ejemplo de lógica simple
+        verdict = "SATISFACTORIO" if (cov >= 0.90) else "REQUIERE REVISIÓN" 
         color_verdict = "green" if verdict == "SATISFACTORIO" else "red"
 
         conclusion = f"""
@@ -265,82 +255,90 @@ class ReportBuilder:
         signature_path = SIGNATURE_PATH
 
         if os.path.exists(signature_path):
-            # Ajusta width y height según el tamaño real de tu firma para que no se deforme
             sig_img = Image(signature_path, width=4.5*cm, height=2.5*cm)
-            sig_img.hAlign = 'LEFT' # Alineamos a la izquierda para coincidir con el texto
+            sig_img.hAlign = 'LEFT'
             story.append(sig_img)
-            # Un pequeño ajuste negativo si la imagen tiene mucho aire abajo, o Spacer(1, 0)
             story.append(Spacer(1, -0.3*cm)) 
         else:
-            # Si no hay imagen, dejamos espacio para firmar a mano
             story.append(Spacer(1, 2*cm))
         
         # Bloque de firma
         story.append(Paragraph(
             "_________________________________________<br/>"
             "<b>Ing. Responsable</b><br/>"
-            "División Metrología de Datos - INTI",
+            "Departamento de Inteligencia Artificial - INTI",
             self._styles["Normal"]
         ))
 
-        # Generar PDF
         try:
             self._doc.build(story, onFirstPage=self._add_footer, onLaterPages=self._add_footer)
             logging.info(f"Reporte generado: {self._pdf_path}")
         except Exception as e:
             logging.error(f"Error building PDF: {e}")
         finally:
-            # Limpieza de archivos temporales (dashboard se limpia en su func, aquí los del paso 3)
-            # Nota: Implementar lógica de borrado robusta si se desea.
             pass
 
     def _generate_dashboard_plot(self, history, metrics):
-        """Genera el grid 2x2 y devuelve el path temporal."""
+        """Genera el grid 2x2 con escalas dinámicas."""
         try:
             alphas = np.array(history.get('alphas', []))
             uncert = np.array(history.get('uncertainty', []))
             coverages = np.array(history.get('batch_coverage', []))
             setsizes = np.array(history.get('batch_setsizes', []))
             
-            final_alpha = metrics.get('Optimal Alpha (Risk)', 0.05)
+            final_alpha = metrics.get('Alpha', 0.05)
             target_cov = 1.0 - final_alpha
 
             plt.style.use('ggplot')
             fig, axes = plt.subplots(2, 2, figsize=(10, 7))
             
-            # 1. Alpha
+            # --- 1. Alpha (Riesgo) ---
             ax1 = axes[0, 0]
-            y_upper_lim_alphas = 0.5 if np.max(alphas, initial=0) < 0.5 else 1
             if len(alphas) > 0:
                 ax1.plot(alphas, color='tab:blue', label='Alpha')
                 ax1.axhline(final_alpha, color='r', linestyle='--', label='Final')
-                ax1.set_ylim(0, y_upper_lim_alphas)
-                ax1.set_title("Evolución de Alpha (Riesgo), por batch")
-                ax1.legend(), 
+                
+                ax1.set_ylim(bottom=0) 
+                ax1.margins(y=0.1) 
+                
+                ax1.set_title("Evolución de Alpha")
+                ax1.legend()
             
-            # 2. Incertidumbre
-            y_upper_lim_uncert = 0.5 if np.max(uncert, initial=0) < 0.5 else 1
+            # --- 2. Incertidumbre ---
             ax2 = axes[0, 1]
             if len(uncert) > 0:
                 ax2.plot(uncert, color='tab:orange')
-                ax2.set_ylim(0, y_upper_lim_uncert)
-                ax2.set_title("Incertidumbre Detectada (U), por batch")
+                
+                # Igual aquí: piso en 0, techo dinámico
+                ax2.set_ylim(bottom=0)
+                ax2.margins(y=0.1)
+                
+                ax2.set_title("Incertidumbre Detectada (U)")
             
-            # 3. Cobertura
+            # --- 3. Cobertura ---
             ax3 = axes[1, 0]
             if len(coverages) > 0:
-                # 1. Graficamos la línea principal con marcadores
                 ax3.plot(np.arange(len(coverages)), coverages, color='tab:green', marker='o', 
-                         markersize=4, label='Real')
+                        markersize=4, label='Real')
                 ax3.axhline(target_cov, color='r', linestyle='--', 
                             linewidth=2, label='Target')
                 
                 ax3.fill_between(np.arange(len(coverages)), coverages, alpha=0.2, color='tab:green')
+                
+                # CAMBIO CLAVE: Quitamos set_ylim(0, 1). 
+                # Dejamos que matplotlib ajuste, pero nos aseguramos que incluya el target
+                # Calculamos min y max considerando también la línea de target
+                data_min = min(np.min(coverages), target_cov)
+                data_max = max(np.max(coverages), target_cov)
+                
+                # Damos un "colchón" (padding) del 20% arriba y abajo de la variación
+                span = (data_max - data_min) if (data_max - data_min) > 0 else 0.1
+                ax3.set_ylim(data_min - span*0.2, data_max + span*0.2)
+                
                 ax3.set_title("Cobertura por Batch")
-                ax3.set_ylim(0, 1)  # Mantiene el rango 0-1
-                ax3.legend(loc='lower right') # Mueve la leyenda si tapa datos
+                ax3.legend(loc='best') # 'best' busca el lugar vacío automáticamente
 
-            # 4. Set Sizes
+            # --- 4. Set Sizes ---
             ax4 = axes[1, 1]
             if len(setsizes) > 0:
                 markerline, stemlines, baseline = ax4.stem(np.arange(len(setsizes)), setsizes, basefmt=" ")
@@ -352,9 +350,10 @@ class ReportBuilder:
                 
                 avg_size = np.mean(setsizes)
                 ax4.axhline(avg_size, color='gray', linestyle=':', alpha=0.7, label=f'Prom: {avg_size:.1f}')
+                ax4.set_ylim(bottom=0)
+                ax4.set_ylim(top=np.max(setsizes) * 1.15) 
                 
                 ax4.set_title("Tamaño de Sets (Max)")
-                ax4.set_ylim(bottom=0, top=max(setsizes) + 1) 
                 ax4.legend()
 
             plt.tight_layout()
@@ -373,7 +372,7 @@ class ReportBuilder:
         Envía el reporte por correo electrónico utilizando SMTP seguro.
         """
         message = EmailMessage()
-        message["Subject"] = "Informe de Evaluación Metrológica – INTI"
+        message["Subject"] = "Informe de Evaluación de Incertidumbre – INTI"
         message["From"] = self.email_sender
         message["To"] = receiver
         html = f"""
@@ -399,7 +398,7 @@ class ReportBuilder:
         <br>
 
         <p>Saludos cordiales,<br>
-        <strong>Equipo de Evaluación Metrológica – INTI</strong></p>
+        <strong>Departamento de Inteligencia Artificial – INTI</strong></p>
 
     </body>
 </html>

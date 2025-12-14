@@ -199,5 +199,5 @@ class ClientManager(Process):
         self.logger.info(f"Received EOF message for client {self.user_id}")
         self.consumer.handle_sigterm()
         self.batch_handler.handle_sigterm()
-        self.update_session_status(SessionStatus.COMPLETED)
+        # self.update_session_status(SessionStatus.COMPLETED)
         

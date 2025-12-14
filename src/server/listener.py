@@ -148,7 +148,6 @@ class Listener:
         with self._active_clients_lock:
             if user_id in self._active_clients:
                 handler = self._active_clients[user_id]
-                logging.info(f"ENVIO ACK para {user_id}...")
                 try:
                     self.middleware.add_callback_threadsafe(handler.send_ack)
                 except Exception as e:
@@ -182,7 +181,6 @@ class Listener:
                 try:
                     handler.terminate()
                     handler.join()
-                    logging.info(f"ENVIO NACK para {user_id}...")
                     handler.send_nack()
                     self.logger.info(f"Terminated ClientManager for client {user_id}...")
                 except Exception as e:
