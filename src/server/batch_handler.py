@@ -30,11 +30,6 @@ class BatchHandler:
         self._session_id = session_id
         self._inputs_format = inputs_format
         self.uq = utrace_calculator
-        self._build_state()
-        """
-        The line above should change to store only scores instead of probabilities per class and labels.
-        self._batches: Dict[int, np.ndarray] = {}
-        """
 
     def _build_state(self):
         inputs = self._db.get_inputs_from_session(self._session_id)

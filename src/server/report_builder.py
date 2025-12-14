@@ -110,7 +110,7 @@ class ReportBuilder:
         story.append(Spacer(1, 1.5*cm))
         story.append(Paragraph("INSTITUTO NACIONAL DE TECNOLOGÍA INDUSTRIAL", self._styles["Heading1Blue"]))
         story.append(Spacer(1, 0.2*cm))
-        story.append(Paragraph("Informe de Evaluación de Incertidumbre de Inteligencia Artificial", self._styles["CenterTitle"]))
+        story.append(Paragraph("Informe de Evaluación de Incertidumbre", self._styles["CenterTitle"]))
         story.append(Spacer(1, 1.5*cm))
         
         # Datos del cliente
