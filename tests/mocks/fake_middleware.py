@@ -57,7 +57,7 @@ class FakeMiddleware:
     ):
         pass
         
-    def basic_consume(self, channel, queue_name: str, callback_function):
+    def basic_consume(self, channel, queue_name: str, callback_function, consumer_tag=None):
         self.callbacks[queue_name] = callback_function
 
 
@@ -122,7 +122,7 @@ class FakeMiddleware:
             callback_function(ch, method, properties, body)
         return wrapper
     
-    def stop_consuming(self):
+    def stop_consuming(self, channel=None):
         self._is_running = False
         if not self.stop_consuming_called:
             self.clients_handled_until_stop_consuming = len(self.msg_ack)
@@ -130,6 +130,9 @@ class FakeMiddleware:
         self.stop_consuming_called = True
 
     def delete_queue(self, channel, queue_name: str):   
+        pass
+
+    def handle_sigterm(self):
         pass
 
     def is_running(self):

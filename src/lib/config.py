@@ -47,6 +47,7 @@ class GlobalConfig:
         postgres_db = os.getenv("POSTGRES_DB", "calibration_db")
         self.database_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
         self.connections_service_url = os.getenv("CONNECTIONS_SERVICE_URL", "http://connection-service:8000")
+        self.environment = os.getenv("ENVIRONMENT", "PRODUCTION")
 
 
 def initialize_config():

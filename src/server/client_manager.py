@@ -25,6 +25,7 @@ class ClientManager(Process):
         clients_to_remove_queue: Queue,
         config,
         report_builder,
+        utrace_calculator_factory,
         inputs_format=None,
         recipient_email=None,
     ):
@@ -50,6 +51,8 @@ class ClientManager(Process):
         self.session_id = session_id
         self.inputs_format = inputs_format
         self.recipient_email = recipient_email
+        self.utrace_calculator_factory = utrace_calculator_factory
+        self.utrace_calculator = None
         self.config = config
 
         # Timeout management
@@ -111,6 +114,7 @@ class ClientManager(Process):
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         self.timeout_checker_handler.start()
         self.database = Database(get_engine(self.config.database_url))
+        self.utrace_calculator = self.utrace_calculator_factory(database=self.database, session_id=self.session_id)
 
         try:
             logging.info(f"ClientManager process started for client {self.user_id}")
@@ -121,6 +125,7 @@ class ClientManager(Process):
                 middleware=self.middleware,
                 database=self.database,
                 inputs_format=self.inputs_format,
+                utrace_calculator=self.utrace_calculator,
             )
 
             self.consumer = Consumer(
@@ -195,9 +200,11 @@ class ClientManager(Process):
     def _handle_EOF_message(self):
         """Handle end-of-file message: stop consumer and batch handler, then remove client from active_clients."""
 
-        self.send_report()
+        if self.config.environment == "PRODUCTION":
+            self.send_report()
+
         self.logger.info(f"Received EOF message for client {self.user_id}")
         self.consumer.handle_sigterm()
         self.batch_handler.handle_sigterm()
-        # self.update_session_status(SessionStatus.COMPLETED)
+        self.update_session_status(SessionStatus.COMPLETED)
         

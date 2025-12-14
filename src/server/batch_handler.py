@@ -15,6 +15,7 @@ class BatchHandler:
         session_id: str,
         on_eof,
         middleware,
+        utrace_calculator,
         database=None,
         inputs_format=None,
     ):
@@ -28,7 +29,7 @@ class BatchHandler:
         self._channel = self._middleware.create_channel()
         self._session_id = session_id
         self._inputs_format = inputs_format
-        self.uq = UtraceCalculator(database=self._db, session_id=self._session_id)
+        self.uq = utrace_calculator
         self._build_state()
         """
         The line above should change to store only scores instead of probabilities per class and labels.

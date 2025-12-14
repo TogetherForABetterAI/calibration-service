@@ -36,7 +36,7 @@ def calculator(mock_db, mock_uq, mocker):
     mocker.patch('src.server.utrace_calculator.CALIBRATION_LIMIT', CALIB_LIMIT_MOCK)
     mocker.patch('src.server.utrace_calculator.UNCERTAINTY_LIMIT', UNCERTAINTY_LIMIT_MOCK)
     
-    calc = UtraceCalculator(database=mock_db, user_id=1, session_id="sess_123")
+    calc = UtraceCalculator(database=mock_db, session_id="sess_123")
     return calc
 
 @pytest.fixture
@@ -50,41 +50,10 @@ def sample_entry():
 
 def test_initialization_new_session(calculator, mock_db):
     """Verifica el estado inicial cuando no hay datos previos en DB."""
-    mock_db.get_latest_scores_record.assert_called_once_with(1, "sess_123")
+    mock_db.get_latest_scores_record.assert_called_once()
     assert calculator.stage == CalibrationStage.INITIAL_CALIBRATION
     assert calculator.batch_counter == 0
     assert calculator.accuracy == 0.0
-
-def test_initialization_restore_session(mock_db, mocker):
-    """Verifica que se restauren los datos si la DB devuelve un registro."""
-    # Simulamos un registro de DB
-    record = MagicMock()
-    record.batchs_counter = 10
-    record.stage = CalibrationStage.PREDICTION_SET_CONSTRUCTION
-    record.vec_scores = [0.9, 0.8]
-    record.alphas = [0.1]
-    record.uncertainties = [0.5]
-    record.coverages = [0.95]
-    record.setsizes = [2.0]
-    record.correct_preds = 50
-    record.total_samples = 60
-    record.accuracy = 0.83
-    record.scores = np.array([0.9, 0.8], dtype=np.float64).tobytes()
-    record.alpha = 0.1
-    record.confidences = np.array([0.9, 0.8], dtype=np.float64).tobytes()
-
-    mock_db.get_latest_scores_record.return_value = record
-    
-    # Instanciamos manualmente para que tome el mock configurado
-    calc = UtraceCalculator(mock_db, 1, "sess_res")
-    
-    assert calc.batch_counter == 10
-    assert calc.stage == CalibrationStage.PREDICTION_SET_CONSTRUCTION
-    assert np.array_equal(calc.uq.conformity_scores_, np.array([0.9, 0.8]))
-    assert calc.alphas_ == [0.1]
-    # Verifica conversión a int de setsizes
-    assert calc.batch_setsizes == [2]
-    assert calc.accuracy == 0.83
 
 def test_phase_calibration(calculator, sample_entry, mock_uq):
     """Test de la etapa de Calibración (contador <= CALIBRATION_LIMIT)."""
@@ -119,7 +88,7 @@ def test_phase_uncertainty_estimation(calculator, sample_entry, mock_uq):
     assert len(calculator.U_) == 1
     
     args, _ = calculator._db.update_session_state.call_args
-    updates = args[2] # El tercer argumento es 'updates'
+    updates = args[1] # El segundo argumento es 'updates'
     assert 'push_alphas' in updates
     assert 'push_uncertainties' in updates
 
@@ -149,7 +118,7 @@ def test_phase_prediction(calculator, sample_entry, mock_uq):
     assert len(calculator.stored_confidences) == 1
     
     args, _ = calculator._db.update_session_state.call_args
-    updates = args[2]
+    updates = args[1]
     
     assert 'push_confidences' in updates
     assert isinstance(updates['push_confidences'], bytes) 

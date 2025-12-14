@@ -18,6 +18,7 @@ class Listener:
         config,
         cm_middleware_factory, 
         report_builder_factory, 
+        utrace_calculator_factory,
         database=None,
         logger=None,
     ):
@@ -37,6 +38,7 @@ class Listener:
         # Client manager factory
         self.cm_middleware_factory = cm_middleware_factory
         self.report_builder_factory = report_builder_factory
+        self.utrace_calculator_factory = utrace_calculator_factory
 
         # Control de procesos cliente
         self._active_clients: Dict[str, ClientManager] = {}
@@ -133,6 +135,7 @@ class Listener:
             middleware=self.cm_middleware_factory(self.config.middleware_config),
             clients_to_remove_queue=self.clients_to_remove_queue,
             report_builder=self.report_builder_factory(user_id=user_id),
+            utrace_calculator_factory=self.utrace_calculator_factory,
             config=self.config,
             inputs_format=inputs_format,
             recipient_email=recipient_email,

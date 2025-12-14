@@ -8,7 +8,7 @@ from utrace.uncertaintyQuantifier import UncertaintyQuantifier
 from utrace.utils.utils import flatten_batch, get_coverage
 
 class UtraceCalculator:
-    def __init__(self, database, session_id, model_type="MNIST"):
+    def __init__(self, database, session_id):
         self._db = database
         self._session_id = session_id
         

@@ -32,7 +32,7 @@ def db_mock():
 
 @pytest.fixture
 def handler():
-    return BatchHandler(user_id="client1", session_id="session1", on_eof=Mock(), middleware=Mock(), database=db_mock(), inputs_format=None)
+    return BatchHandler(user_id="client1", session_id="session1", on_eof=Mock(), middleware=Mock(), database=db_mock(), utrace_calculator=Mock(), inputs_format=None)
 
 def test_initialization(handler):
     """Verifica la inicialización correcta de BatchHandler."""

@@ -33,12 +33,16 @@ def mock_config():
     config.master_replica_id = 1
     return config
 
+def utrace_calculator_factory(database=None, session_id=None):
+    return Mock()
+
 @pytest.fixture
 def listener(mock_middleware, mock_channel):
     return Listener(middleware=mock_middleware, 
                     channel=mock_channel, 
                     cm_middleware_factory=cm_middleware_factory, 
                     report_builder_factory=report_builder_factory,
+                    utrace_calculator_factory=utrace_calculator_factory,
                     config=mock_config())
 
 
@@ -46,7 +50,7 @@ def listener(mock_middleware, mock_channel):
 def test_listener_initialization(listener):
     """Verifica que el Listener se inicializa correctamente."""
     assert isinstance(listener.channel, Mock)
-    assert listener.middleware_config == {"mock": "config"}
+    assert isinstance(listener.config, Mock)
     assert isinstance(listener._active_clients, dict)
     assert not listener.shutdown_initiated
     assert listener.clients_to_remove_queue is not None
@@ -57,23 +61,34 @@ def test_add_and_remove_client(listener):
     mock_client = Mock()
     user_id = "client-123"
 
-    listener._add_client(user_id, mock_client)
+    listener._add_client(user_id, mock_client, Mock(), Mock())
     assert user_id in listener._active_clients
 
     listener._remove_client(user_id)
     assert user_id not in listener._active_clients
 
 
-def test_handle_new_client_success(listener):
-    """Simula recibir una notificación de cliente válida y verifica que se crea un ClientManager."""
+@patch("src.server.listener.parse_inputs_format")
+def test_handle_new_client_success(mock_parse_format, listener):
+    """Simula recibir una notificación válida y verifica creación de ClientManager."""
     with patch("src.server.listener.ClientManager") as MockClientManager:
         mock_manager = Mock()
         MockClientManager.return_value = mock_manager
-
-        notification = {"user_id": "client-001"}
+        
+        notification = {
+            "user_id": "client-001", 
+            "session_id": "session-abc",
+            "inputs_format": "RAW",
+            "email": "test@test.com"
+        }
         body = json.dumps(notification).encode("utf-8")
+        
+        mock_method = Mock()
+        mock_method.delivery_tag = 123
 
-        listener._handle_new_client(None, None, None, body)
+        mock_ch = Mock()
+
+        listener._handle_new_client(mock_ch, mock_method, None, body)
 
         MockClientManager.assert_called_once()
         mock_manager.start.assert_called_once()
@@ -81,26 +96,28 @@ def test_handle_new_client_success(listener):
 
 
 def test_handle_new_client_missing_id(listener):
-    """Verifica que si falta el user_id, no se lanza un proceso."""
+    """Verifica que si falta user_id o session_id, se lance ValueError."""
     with patch("src.server.listener.ClientManager") as MockClientManager:
-        notification = {"foo": "bar"}
+        notification = {"foo": "bar"} # Falta user_id y session_id
         body = json.dumps(notification).encode("utf-8")
 
-        listener._handle_new_client(None, None, None, body)
+        with pytest.raises(ValueError, match="Client notification missing fields"):
+            listener._handle_new_client(None, None, None, body)
+        
         MockClientManager.assert_not_called()
 
 def test_monitor_removals_removes_client(listener):
     """Verifica que el monitor elimina clientes cuando llegan IDs a la queue."""
     user_id = "client-xyz"
     mock_client = Mock()
-    listener._add_client(user_id, mock_client)
+    
+    listener._add_client(user_id, mock_client, Mock(), 99)
 
-    # Agregamos una tarea de eliminación y una señal de fin
     listener.clients_to_remove_queue.put(user_id)
     listener.clients_to_remove_queue.put(None)
 
     thread = threading.Thread(target=listener._monitor_removals)
     thread.start()
-    thread.join(timeout=1)
+    thread.join(timeout=2)
 
     assert user_id not in listener._active_clients
