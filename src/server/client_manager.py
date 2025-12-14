@@ -135,6 +135,7 @@ class ClientManager(Process):
                 inputs_callback=self._handle_inputs_message,
                 logger=self.logger,
             )
+            self.batch_handler._build_state()
 
             if not self.shutdown_initiated:
                 self.consumer.start()  
@@ -191,7 +192,6 @@ class ClientManager(Process):
         """
         Build and send report when both labeled and replies data are complete.
         """
-        
         self.report_builder.generate_report(self.batch_handler.get_calibration_results())  
 
         logging.info(f"Sending report to {self.recipient_email} for client {self.user_id}")
