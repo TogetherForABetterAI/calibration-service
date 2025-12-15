@@ -23,12 +23,6 @@ class Listener:
         logger=None,
     ):
         self.middleware = middleware
-        self.middleware.basic_consume(
-            channel=channel,
-            queue_name=CONNECTION_QUEUE_NAME,
-            callback_function=self._handle_new_client,
-            consumer_tag=config.server_config.pod_name
-        )
 
         self.logger = logger or logging.getLogger("listener")
         self.channel = channel
@@ -76,7 +70,13 @@ class Listener:
             self.remove_client_monitor.start()
             while not self.shutdown_initiated:
                 try:
-                    if not self.shutdown_initiated: 
+                    if not self.shutdown_initiated:
+                        self.middleware.basic_consume(
+                            channel=self.channel,
+                            queue_name=CONNECTION_QUEUE_NAME,
+                            callback_function=self._handle_new_client,
+                            consumer_tag=self.config.server_config.pod_name
+                        )
                         self.middleware.start_consuming(self.channel)
                 except (pika.exceptions.AMQPConnectionError, pika.exceptions.ChannelClosedByBroker) as e:                   
                     self.logger.error(f"AMQP Connection error in Listener: {e}")
@@ -97,12 +97,7 @@ class Listener:
     def reconnect_to_middleware(self):
         self.middleware.connect()
         self.channel = self.middleware.create_channel(prefetch_count=self.config.server_config.upper_bound_clients)
-        self.middleware.basic_consume(
-            channel=self.channel,
-            queue_name=CONNECTION_QUEUE_NAME,
-            callback_function=self._handle_new_client,
-            consumer_tag=self.config.server_config.pod_name
-            )
+    
     
     # Callback for new client notifications
     def _handle_new_client(self, ch, method, properties, body):
