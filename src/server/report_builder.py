@@ -230,30 +230,113 @@ class ReportBuilder:
         if dash_path:
             story.append(Image(dash_path, width=17*cm, height=12*cm))
         
-        # =========================================================================
+       # =========================================================================
         # 5. CONCLUSIONES Y FIRMA
         # =========================================================================
         story.append(PageBreak())
         story.append(Paragraph("5. Dictamen Técnico", self._styles["Heading1Blue"]))
         
+        # --- Lógica de Evaluación (Misma lógica, mejor presentación) ---
         acc = metrics.get("Accuracy", 0)
         cov = metrics.get("Empirical Coverage", 0)
+        uq = metrics.get("Model Uncertainty Upper Bound", 1.0)
+        alpha = metrics.get("Alpha", 0.1)
+        set_size = metrics.get("Max Set Size (Worst case scenario)", 10) 
         
-        verdict = "SATISFACTORIO" if (cov >= 0.90) else "REQUIERE REVISIÓN" 
-        color_verdict = "green" if verdict == "SATISFACTORIO" else "red"
+        target_coverage = 1.0 - alpha
+        is_valid = cov >= target_coverage
+        is_safe = uq <= alpha
+        
+        MIN_ACC = 0.60 
+        MAX_TOLERATED_SET_SIZE = 9 
+        is_useful = (acc >= MIN_ACC) and (set_size <= MAX_TOLERATED_SET_SIZE)
 
-        conclusion = f"""
-        El modelo evaluado ha completado el proceso de calibración U-TraCE. 
-        Con una exactitud base del <b>{acc:.2%}</b>, el sistema de predicción conformal logró una cobertura empírica 
-        del <b>{cov:.2%}</b>. <br/><br/>
-        El estado final de la evaluación se considera: <font color='{color_verdict}'><b>{verdict}</b></font>.
+        # Definir estados para la visualización
+        if is_valid and is_safe and is_useful:
+            verdict_text = "SATISFACTORIO"
+            verdict_color = colors.HexColor("#2E7D32") # Verde Oscuro Profesional
+            bg_color = colors.HexColor("#E8F5E9")      # Verde muy claro (Fondo)
+            icon_char = "✔"
+            explanation_text = (
+                "El modelo ha superado exitosamente todas las pruebas de validación metrológica. "
+                "Cumple con las garantías estadísticas de cobertura requeridas, mantiene la incertidumbre "
+                "bajo la cota de riesgo permitida y demuestra utilidad operativa."
+            )
+        else:
+            verdict_text = "REQUIERE REVISIÓN"
+            verdict_color = colors.HexColor("#C62828") # Rojo Oscuro Profesional
+            bg_color = colors.HexColor("#FFEBEE")      # Rojo muy claro (Fondo)
+            icon_char = "✘"
+            
+            reasons = []
+            if not is_valid:
+                reasons.append(f"• Cobertura insuficiente: {cov:.2%} (Objetivo: ≥{target_coverage:.2%})")
+            if not is_safe:
+                reasons.append(f"• Incertidumbre excesiva: U={uq:.4f} (Límite: ≤{alpha:.4f})")
+            if not is_useful:
+                if acc < MIN_ACC:
+                    reasons.append(f"• Exactitud base crítica: {acc:.2%} (Mínimo: {MIN_ACC:.2%})")
+                if set_size > MAX_TOLERATED_SET_SIZE:
+                    reasons.append(f"• Conjuntos triviales: El modelo predice {set_size} clases simultáneamente.")
+            
+            explanation_text = "El modelo no cumple con los estándares de calidad establecidos. Se detectaron los siguientes desvíos:<br/><br/>" + "<br/>".join(reasons)
+
+        # --- 1. Introducción ---
+        intro = f"""
+        La evaluación se realizó bajo un nivel de significancia configurado de <b>&alpha; = {alpha:.4f}</b>. 
+        A continuación se presenta el resumen de las métricas determinantes para el dictamen.
         """
-        story.append(Paragraph(conclusion, self._styles["NormalJustified"]))
+        story.append(Paragraph(intro, self._styles["NormalJustified"]))
+        story.append(Spacer(1, 0.5*cm))
+
+        # --- 2. Tabla de Métricas (Diseño Limpio) ---
+        # Formato: [Etiqueta, Valor, Estado Visual]
+        metric_data = [
+            ["Parámetro Evaluado", "Resultado", "Ref."],
+            ["Exactitud Base (Accuracy)", f"{acc:.2%}", ""],
+            ["Cobertura Empírica", f"{cov:.2%}", f"Obj: ≥{target_coverage:.2%}"],
+            ["Cota de Incertidumbre (U)", f"{uq:.4f}", f"Max: {alpha:.4f}"],
+            ["Tamaño Máximo de Set", f"{set_size}", f"Max: {MAX_TOLERATED_SET_SIZE}"]
+        ]
+
+        t_metrics = Table(metric_data, colWidths=[8*cm, 4*cm, 4*cm])
+        t_metrics.setStyle(TableStyle([
+            ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#004C91")), # Línea azul bajo encabezado
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor("#004C91")),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'), # Centrar valores
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white]), # Filas alternadas
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(t_metrics)
+        story.append(Spacer(1, 0.8*cm))
+
+        # --- 3. Banner de Veredicto (Estilo "Tarjeta") ---
+        # Creamos una tabla de una celda para hacer el recuadro de color
+        verdict_content = [
+            [Paragraph(f"<b>ESTADO FINAL: {verdict_text} {icon_char}</b>", 
+             ParagraphStyle('VerdictTitle', parent=self._styles['Normal'], alignment=TA_CENTER, fontSize=14, textColor=verdict_color))],
+            [Paragraph(explanation_text, 
+             ParagraphStyle('VerdictBody', parent=self._styles['Normal'], alignment=TA_JUSTIFY, textColor=colors.black))]
+        ]
         
-        story.append(Spacer(1, 3*cm))
+        t_verdict = Table(verdict_content, colWidths=[16*cm])
+        t_verdict.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), bg_color),        # Fondo suave (verde o rojo)
+            ('BOX', (0, 0), (-1, -1), 1, verdict_color),       # Borde sólido del color del estado
+            ('TOPPADDING', (0, 0), (-1, -1), 15),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+            ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.white), # Separador sutil blanco
+        ]))
+        story.append(t_verdict)
+        story.append(Spacer(1, 2.5*cm))
 
+        # --- 4. Firma ---
         signature_path = SIGNATURE_PATH
-
         if os.path.exists(signature_path):
             sig_img = Image(signature_path, width=4.5*cm, height=2.5*cm)
             sig_img.hAlign = 'LEFT'
@@ -262,22 +345,19 @@ class ReportBuilder:
         else:
             story.append(Spacer(1, 2*cm))
         
-        # Bloque de firma
         story.append(Paragraph(
             "_________________________________________<br/>"
             "<b>Ing. Responsable</b><br/>"
             "Departamento de Inteligencia Artificial - INTI",
             self._styles["Normal"]
         ))
-
+        
+        # --- Build ---
         try:
             self._doc.build(story, onFirstPage=self._add_footer, onLaterPages=self._add_footer)
             logging.info(f"Reporte generado: {self._pdf_path}")
         except Exception as e:
             logging.error(f"Error building PDF: {e}")
-        finally:
-            pass
-
     def _generate_dashboard_plot(self, history, metrics):
         """Genera el grid 2x2 con escalas dinámicas."""
         try:
